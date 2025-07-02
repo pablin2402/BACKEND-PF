@@ -240,7 +240,7 @@ app.use("/whatsapp", apiRoute);
 app.use("/whatsapp", inventaryRoute);
 app.use("/whatsapp", userRoute);
 app.use("/whatsapp", kanbanRoute);
-const ip = '192.168.0.104';
+//const ip = '192.168.0.104';
 //const ip= '192.168.1.66';
 
 //192.168.1.87
@@ -249,7 +249,7 @@ const ip = '192.168.0.104';
 //app.listen(port,'0.0.0.0',() => { PARA SUBIR AL SERVIDOR
 
 const port = process.env.PORT || 3041;
-app.listen(port,ip,() => {
+app.listen(port, '0.0.0.0', () => {
   console.log(`server on port 3023 `);
 });
 
