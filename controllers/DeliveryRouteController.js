@@ -275,7 +275,9 @@ const getAllRoutes = async (req, res) => {
       query.status = req.body.status;
     }
 
-    query.progress = { $lt: 100 };
+    if (req.body.excludeComplete) {
+      query.progress = { $lt: 100 };
+    }
 
     const page = parseInt(req.body.page) || 1;
     const limit = 8;
