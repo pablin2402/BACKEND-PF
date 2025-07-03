@@ -10,6 +10,7 @@ const salesManActivityController = require("../controllers/SalesManActivityContr
 const upload = require("./upload");
 const deliveryRouteController = require("../controllers/DeliveryRouteController.js");
 const upload1 = require("../services/uploadToS3.js");
+const salesPrediction = require("../controllers/SalesPredictionController.js");
 
 router
 .post("/upload/image", upload1.single('image'), (req, res) => {
@@ -62,6 +63,9 @@ router
 .put("/route/progress/id",authenticateToken,salesManActivityController.updateRouteSalesProgress)
 .put("/route/delivery/id",authenticateToken,deliveryRouteController.updateRouteSalesStatus)
 .put("/route/delivery/progress/id",authenticateToken,deliveryRouteController.updateRouteSalesProgress)
+
+.post("/sales/prediction",authenticateToken, salesPrediction.getProductMonthlyPrediction)
+
 
 .post("/order/pay/list/id",authenticateToken, orderPayController.getOrderPay)
 .post("/order/pay/list/calendar",authenticateToken, orderPayController.getOrderPayByCalendar)
