@@ -308,7 +308,7 @@ const getAllRoutes = async (req, res) => {
 
 
 const updateRouteSalesStatus = async (req, res) => {
-  const { _id, routeId, visitStatus, visitTime, orderTaken, visitStartTime, visitEndTime, status, tripTime, distanceTrip } = req.body;
+  const { _id, routeId, visitStatus,visitStatus1, visitTime, orderTaken, visitStartTime, visitEndTime, status, tripTime, distanceTrip } = req.body;
 
   try {
     const updateRoute = await SalesManRoute.findOneAndUpdate(
@@ -316,6 +316,7 @@ const updateRouteSalesStatus = async (req, res) => {
       {
         $set: {
           'route.$.visitStatus': visitStatus,
+          'route.$.visitStatus1': visitStatus1,
           'route.$.visitTime': visitTime,
           'route.$.orderTaken': orderTaken,
           'route.$.visitStartTime': visitStartTime,
