@@ -172,7 +172,7 @@ const predictSalesForTopProducts = async (req, res) => {
     const now = new Date();
     const startDate = new Date(now.getUTCFullYear() - 10, 0, 1);
     const endDate = new Date(now.getUTCFullYear() + 1, 0, 1);
-
+    console.log(startDate, endDate)
     const matchStage = {
       $match: {
         creationDate: { $gte: startDate, $lt: endDate },
