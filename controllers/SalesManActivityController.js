@@ -107,7 +107,6 @@ const getRouteSalesById = async (req, res) => {
       id_owner: String(req.body.id_owner),
       _id: new mongoose.Types.ObjectId(req.body._id),
     };
-    console.log(req.body)
     const salesManData = await SalesManRoute.find(query)
       .populate("salesMan")
     res.json(salesManData || []);
@@ -153,7 +152,6 @@ function getLocalDayRangeFromUtcDate(utcDateStr, utcOffsetHours = -4) {
   return { startUtc, endUtc };
 }
 const getSalesManByIdActivity = async (req, res) => {
-  console.log(req.body)
   try {
     const query = {
       id_owner: String(req.body.id_owner),
@@ -163,7 +161,6 @@ const getSalesManByIdActivity = async (req, res) => {
     if (req.body.startDate && req.body.endDate) {
       const { startUtc: startDateUtc } = getLocalDayRangeFromUtcDate(req.body.startDate, 0);
       const { endUtc: endDateUtc } = getLocalDayRangeFromUtcDate(req.body.endDate, 0);
-      console.log(startDateUtc, endDateUtc)
       query.creationDate = {
         $gte: startDateUtc,
         $lte:endDateUtc,
@@ -268,7 +265,6 @@ function getLocalDayRangeFromUtcDate(utcDateStr, utcOffsetHours = -4) {
 const getAllRoutes = async (req, res) => {
   try {
     const query = { id_owner: String(req.body.id_owner) };
-    console.log(req.body)
     if (req.body.salesMan && req.body.salesMan !== "todos") {
       query.salesMan = new mongoose.Types.ObjectId(req.body.salesMan);
     }
@@ -284,7 +280,6 @@ const getAllRoutes = async (req, res) => {
     if (req.body.startDate && req.body.endDate) {
       const { startUtc: startDateUtc } = getLocalDayRangeFromUtcDate(req.body.startDate, 4);
       const { endUtc: endDateUtc } = getLocalDayRangeFromUtcDate(req.body.endDate, 4);
-      console.log(startDateUtc, endDateUtc)
       query.startDate = { $gte: startDateUtc, $lte: endDateUtc };
     }
 

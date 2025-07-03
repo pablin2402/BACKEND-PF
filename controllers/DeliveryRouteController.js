@@ -74,7 +74,6 @@ const getSalesMan = async (req, res) => {
 };
 const getSalesManByIdRoute = async (req, res) => {
   try {
-    console.log(req.body)
     const query = {
       id_owner: String(req.body.id_owner),
       _id: new mongoose.Types.ObjectId(req.body._id),
@@ -150,7 +149,6 @@ const getRouteSalesById = async (req, res) => {
       _id: new mongoose.Types.ObjectId(req.body._id),
     })
       .populate("delivery")
-    console.log(req.body, salesManData)
     res.json(salesManData);
 
   } catch (error) {
@@ -322,7 +320,6 @@ const updateRouteSalesStatus = async (req, res) => {
     tripTime,
     distanceTrip,
   } = req.body;
-  console.log(req.body)
   try {
     const updateFields = {};
     if (visitStatus !== undefined) updateFields['route.$.visitStatus'] = visitStatus;

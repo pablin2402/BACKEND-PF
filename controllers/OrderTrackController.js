@@ -5,7 +5,6 @@ const isValidObjectId = (id) => {
     return id && typeof id === "string" && mongoose.Types.ObjectId.isValid(id);
 };
 const createOrderEvent = async (req, res) => {
-  console.log(req.body)
     try {
       const {
         orderId,

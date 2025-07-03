@@ -68,7 +68,6 @@ const getDeliveryOrderPickUpByOrderId = async (req, res) => {
 
 const postDeliveryOrderPickUp = (req, res) => {
   try {
-    console.log(req.body)
    const client = new DeliveryOrderPickUp({
         clientName:  req.body.clientName,
         delivery:  new mongoose.Types.ObjectId(req.body.delivery),

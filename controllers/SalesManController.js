@@ -111,7 +111,6 @@ const getClientLocationById = async (req, res) => {
   };
 const uploadSalesmanStatus = async (req, res) => {
   try {
-    console.log(req.body)
     const salesman = await SalesMan.findByIdAndUpdate(
       { _id: new mongoose.Types.ObjectId(req.body._id) },
       { active: req.body.active },
