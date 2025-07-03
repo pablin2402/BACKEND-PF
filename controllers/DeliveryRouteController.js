@@ -308,25 +308,35 @@ const getAllRoutes = async (req, res) => {
 };
 
 
-
 const updateRouteSalesStatus = async (req, res) => {
-  const { _id, routeId, visitStatus,visitStatus1, visitTime, orderTaken, visitStartTime, visitEndTime, status, tripTime, distanceTrip } = req.body;
+  const {
+    _id,
+    routeId,
+    visitStatus,
+    visitStatus1,
+    visitTime,
+    orderTaken,
+    visitStartTime,
+    visitEndTime,
+    status,
+    tripTime,
+    distanceTrip,
+  } = req.body;
 
   try {
+    const updateFields = {};
+    if (visitStatus !== undefined) updateFields['route.$.visitStatus'] = visitStatus;
+    if (visitStatus1 !== undefined) updateFields['route.$.visitStatus1'] = visitStatus1;
+    if (visitTime !== undefined) updateFields['route.$.visitTime'] = visitTime;
+    if (orderTaken !== undefined) updateFields['route.$.orderTaken'] = orderTaken;
+    if (visitStartTime !== undefined) updateFields['route.$.visitStartTime'] = visitStartTime;
+    if (visitEndTime !== undefined) updateFields['route.$.visitEndTime'] = visitEndTime;
+    if (tripTime !== undefined) updateFields['route.$.tripTime'] = tripTime;
+    if (distanceTrip !== undefined) updateFields['route.$.distanceTrip'] = distanceTrip;
+
     const updateRoute = await SalesManRoute.findOneAndUpdate(
       { _id, 'route._id': routeId },
-      {
-        $set: {
-          'route.$.visitStatus': visitStatus,
-          'route.$.visitStatus1': visitStatus1,
-          'route.$.visitTime': visitTime,
-          'route.$.orderTaken': orderTaken,
-          'route.$.visitStartTime': visitStartTime,
-          'route.$.visitEndTime': visitEndTime,
-          'route.$.tripTime': tripTime,
-          'route.$.distanceTrip': distanceTrip
-        }
-      },
+      { $set: updateFields },
       { new: true }
     );
 
@@ -334,7 +344,7 @@ const updateRouteSalesStatus = async (req, res) => {
       return res.status(404).json({ message: 'Ruta no encontrada' });
     }
 
-    if (status) {
+    if (status !== undefined) {
       await SalesManRoute.findOneAndUpdate(
         { _id },
         { $set: { status } },
@@ -344,9 +354,11 @@ const updateRouteSalesStatus = async (req, res) => {
 
     res.json({ message: 'Ruta actualizada con éxito', textMessage: updateRoute });
   } catch (error) {
+    console.error("Error al actualizar la ruta:", error);
     res.status(500).json({ message: 'Error al actualizar la ruta', error });
   }
 };
+
 
 const updateRouteSalesProgress = async (req, res) => {
   try {
