@@ -322,7 +322,7 @@ const updateRouteSalesStatus = async (req, res) => {
     tripTime,
     distanceTrip,
   } = req.body;
-
+  console.log(req.body)
   try {
     const updateFields = {};
     if (visitStatus !== undefined) updateFields['route.$.visitStatus'] = visitStatus;
