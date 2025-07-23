@@ -1,54 +1,8 @@
 const Order = require("../models/Order");
 const mongoose = require("mongoose");
 const tf = require("@tensorflow/tfjs");
+const axios = require("axios");
 
-async function trainAndPredictLSTM(productSales, lookBack = 12, forecastHorizon = 3) {
-  const values = Object.entries(productSales)
-    .sort(([a], [b]) => new Date(a) - new Date(b))
-    .map(([, v]) => v);
-
-  if (values.length <= lookBack) {
-    throw new Error("No hay suficientes datos para entrenar.");
-  }
-
-  // Normalizar
-  const max = Math.max(...values);
-  const normalized = values.map(v => v / max);
-
-  // Crear secuencias X e Y
-  const X = [];
-  const y = [];
-  for (let i = 0; i < normalized.length - lookBack; i++) {
-    X.push(normalized.slice(i, i + lookBack));
-    y.push(normalized[i + lookBack]);
-  }
-
-  const xs = tf.tensor2d(X).reshape([X.length, lookBack, 1]);
-  const ys = tf.tensor2d(y);
-
-  // Crear modelo LSTM
-  const model = tf.sequential();
-  model.add(tf.layers.lstm({ units: 50, inputShape: [lookBack, 1] }));
-  model.add(tf.layers.dense({ units: 1 }));
-
-  model.compile({ loss: "meanSquaredError", optimizer: "adam" });
-
-  // Entrenar
-  await model.fit(xs, ys, { epochs: 100, verbose: 0 });
-
-  // Predecir
-  let input = normalized.slice(-lookBack);
-  const predictions = [];
-
-  for (let i = 0; i < forecastHorizon; i++) {
-    const pred = model.predict(tf.tensor2d([input]).reshape([1, lookBack, 1]));
-    const next = (await pred.data())[0];
-    predictions.push(next * max);
-    input = [...input.slice(1), next];
-  }
-
-  return predictions;
-}
 
 const getCategorySummary = async (req, res) => {
   try {
@@ -167,65 +121,102 @@ const getSalesSummary = async (req, res) => {
     res.status(500).json({ error: "Error al generar el resumen de ventas." });
   }
 };
+function generateMonthlySalesData(orders, productName) {
+  const grouped = {};
+
+  orders.forEach((order) => {
+    const month = new Date(order.creationDate).toISOString().slice(0, 7);
+    order.products.forEach((p) => {
+      if (p.nombre === productName) {
+        if (!grouped[month]) grouped[month] = 0;
+        grouped[month] += p.cantidad;
+      }
+    });
+  });
+
+  const fechas = orders.map((o) => new Date(o.creationDate));
+  const minDate = new Date(Math.min(...fechas));
+  const maxDate = new Date(Math.max(...fechas));
+
+  const allMonths = [];
+  const current = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+  const end = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+
+  while (current <= end) {
+    allMonths.push(current.toISOString().slice(0, 7));
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  return allMonths.map((m) => grouped[m] || 0);
+}
+
 const predictSalesForTopProducts = async (req, res) => {
   try {
     const now = new Date();
     const startDate = new Date(now.getUTCFullYear() - 10, 0, 1);
     const endDate = new Date(now.getUTCFullYear() + 1, 0, 1);
-    console.log(startDate, endDate)
-    const matchStage = {
-      $match: {
-        creationDate: { $gte: startDate, $lt: endDate },
+
+    const topProductsAgg = [
+      { $match: { creationDate: { $gte: startDate, $lt: endDate } } },
+      { $unwind: "$products" },
+      {
+        $group: {
+          _id: "$products.nombre",
+          totalCantidad: { $sum: "$products.cantidad" },
+        },
       },
-    };
+      { $sort: { totalCantidad: -1 } },
+      { $limit: 10 },
+    ];
 
-    const unwindStage = { $unwind: "$products" };
-
-    const groupStage = {
-      $group: {
-        _id: "$products.nombre",
-        totalCantidad: { $sum: "$products.cantidad" },
-      },
-    };
-
-    const sortStage = { $sort: { totalCantidad: -1 } };
-    const limitStage = { $limit: 10 };
-
-    const topProductsAgg = [matchStage, unwindStage, groupStage, sortStage, limitStage];
     const topProducts = await Order.aggregate(topProductsAgg);
-
-    const orders = await Order.find({ creationDate: { $gte: startDate, $lt: endDate } });
+    const orders = await Order.find({
+      creationDate: { $gte: startDate, $lt: endDate },
+    });
 
     const predictions = await Promise.all(
       topProducts.map(async (product) => {
+        const series = generateMonthlySalesData(orders, product._id);
+
+        console.log(`\nProducto: ${product._id}`);
+        console.log("Serie enviada:", series);
+        console.log("Largo de la serie:", series.length);
+        console.log("Tipo de cada valor:", [...new Set(series.map((v) => typeof v))]);
+        console.log("Valores no cero:", series.filter(v => v > 0).length);
+        console.log("Serie válida:", Array.isArray(series) && series.every(v => typeof v === 'number'));
+        console.log("---------------------------------------------------");
+
         try {
-          const ventasPorMes = generateMonthlySalesData(orders, product._id);
-          const forecast = await trainAndPredictLSTM(ventasPorMes);
+          const response = await axios.post("http://192.168.0.104:5003/predict", {
+            series,
+          });
+
           return {
             nombre: product._id,
             totalCantidad: product.totalCantidad,
-            forecast: forecast.map((val, i) => ({
+            forecast: response.data.map((val, i) => ({
               mes: `+${i + 1}`,
               valor: Math.round(val),
             })),
           };
         } catch (err) {
+          console.warn(`⚠️ Error al predecir ${product._id}:`, err.message);
           return {
             nombre: product._id,
             totalCantidad: product.totalCantidad,
             forecast: [],
-            error: "Insuficientes datos para predecir",
+            error: "Error de predicción o datos insuficientes",
           };
         }
       })
     );
+
     res.json({ data: predictions });
   } catch (err) {
-    console.error("Error al predecir:", err);
+    console.error("🚨 Error general al predecir:", err);
     res.status(500).json({ error: "Error del servidor" });
   }
 };
-
 const getOrderById = async (req, res) => {
   try {
     const { id_owner, page, limit, status, paymentType, payStatus, salesId, fullName, startDate, endDate,region } = req.body;
@@ -444,6 +435,132 @@ const getOrderById = async (req, res) => {
   } catch (error) {
     console.error("Error en getOrderById:", error);
     res.status(500).json({ message: "Error obteniendo órdenes", error });
+  }
+};
+const getOrderStatusCounts = async (req, res) => {
+  try {
+    const { id_owner,paymentType, payStatus, salesId, fullName, startDate, endDate, region } = req.body;
+    console.log(req.body)
+    let matchStage = { id_owner };
+    if (region) matchStage.region = region;
+    if (payStatus) matchStage.payStatus = payStatus;
+    if (salesId) matchStage.salesId = mongoose.Types.ObjectId(salesId);
+    if (paymentType) matchStage.accountStatus = paymentType;
+
+    const pipeline = [];
+
+    if (startDate && endDate) {
+      pipeline.push(
+        {
+          $addFields: {
+            creationDateLocal: {
+              $dateSubtract: {
+                startDate: "$creationDate",
+                unit: "hour",
+                amount: 4,
+              },
+            },
+          },
+        },
+        {
+          $match: {
+            ...matchStage,
+            creationDateLocal: {
+              $gte: new Date(`${startDate}T00:00:00Z`),
+              $lte: new Date(`${endDate}T23:59:59Z`),
+            },
+          },
+        }
+      );
+    } else {
+      pipeline.push({ $match: matchStage });
+    }
+    pipeline.push(
+      {
+        $lookup: {
+          from: "clients",
+          localField: "id_client",
+          foreignField: "_id",
+          as: "client",
+        },
+      },
+      {
+        $unwind: {
+          path: "$client",
+          preserveNullAndEmptyArrays: true
+        }
+      }
+    );
+    if (fullName) {
+      const normalizedName = fullName
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+
+      pipeline.push({
+        $match: {
+          $or: [
+            {
+              "client.name": { $exists: true },
+            },
+            {
+              "client.lastName": { $exists: true },
+            }
+          ]
+        }
+      });
+
+      pipeline.push({
+        $addFields: {
+          nameMatch: {
+            $regexMatch: {
+              input: {
+                $toLower: {
+                  $replaceAll: {
+                    input: {
+                      $concat: ["$client.name", " ", "$client.lastName"]
+                    },
+                    find: /[\u0300-\u036f]/g,
+                    replacement: ""
+                  }
+                }
+              },
+              regex: normalizedName
+            }
+          }
+        }
+      });
+
+      pipeline.push({
+        $match: { nameMatch: true }
+      });
+    }
+    pipeline.push({
+      $group: {
+        _id: "$orderStatus",
+        count: { $sum: 1 }
+      }
+    });
+    const result = await Order.aggregate(pipeline);
+    const counts = {
+      created: 0,
+      "En Ruta": 0,
+      cancelled: 0,
+      aproved: 0,
+      delivered: 0
+    };
+
+    result.forEach(r => {
+      if (counts.hasOwnProperty(r._id)) {
+        counts[r._id] = r.count;
+      }
+    });
+
+    res.json({ counts });
+
+  } catch (error) {
+    console.error("Error en getOrderStatusCounts:", error);
+    res.status(500).json({ message: "Error obteniendo conteos de órdenes", error });
   }
 };
 const getOrderSalesAppById = async (req, res) => {
@@ -677,6 +794,8 @@ const getOrderByIdAndOrderStatus = async (req, res) => {
     if (salesId) matchStage.salesId = mongoose.Types.ObjectId(salesId);
     if (paymentType) matchStage.accountStatus = paymentType;
 
+    console.log(req.body);
+    
     const pipeline = [];
 
     if (startDate && endDate) {
@@ -1401,7 +1520,7 @@ const postOrder = (req, res) => {
       id_client: req.body.id_client || "",
       salesId: req.body.salesId || "",
       creationDate: req.body.creationDate,
-      orderStatus: "deliver",
+      orderStatus: "created",
       payStatus: "Pendiente",
       orderTrackId: req.body.orderTrackId,
       region: req.body.region
@@ -1533,14 +1652,60 @@ const updateOrderTracking = async (req, res) => {
     res.status(500).json({ message: "Error interno del servidor." });
   }
 };
+const uploadOrderStatus = async (req, res) => {
+  try {
+    const { _id, id_owner, orderStatus } = req.body;
+    console.log(req.body)
+    if (!_id || !id_owner || !orderStatus) {
+      return res.status(400).send({ message: "Faltan datos: _id, id_owner y orderStatus son requeridos." });
+    }
+
+    const updatedOrder = await Order.findOneAndUpdate(
+      { _id, id_owner },
+      { orderStatus },
+      { new: true }
+    );
+
+    if (!updatedOrder) {
+      return res.status(404).send({ message: "Orden no encontrada o no pertenece al usuario." });
+    }
+
+    res.status(200).send(updatedOrder);
+  } catch (error) {
+    console.error("Error al actualizar el estado de la orden:", error);
+    res.status(500).send({ message: "Error en el servidor." });
+  }
+};
+const getApprovedOrdersCount = async (req, res) => {
+  try {
+    const { id_owner,status } = req.body; 
+
+    const filter = { orderStatus: status };
+
+    if (id_owner) {
+      filter.id_owner = id_owner;
+    }
+
+    const count = await Order.countDocuments(filter);
+
+    res.status(200).send({ count });
+  } catch (e) {
+    console.error("Error al contar órdenes aprobadas:", e);
+    res.status(500).send({ message: "Error en el servidor." });
+  }
+};
+
 
 module.exports = {
   getOrderById,
+  getOrderStatusCounts,
+  getApprovedOrdersCount,
   updateOrderTracking,
   getCategorySummary,
   getSalesSummary,
   getOrderByIdAndClient,
   postOrder,
+  uploadOrderStatus,
   deleteOrder,
   getOrderSalesById,
   getOrdersByYear,

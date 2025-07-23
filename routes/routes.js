@@ -86,6 +86,7 @@ router
 .post("/order/products/stadistics",orderController.getMostSoldProducts)
 .post("/order/products/analysis",orderController.predictSalesForTopProducts)
 .post("/order/id",authenticateToken, orderController.getOrderById)
+.post("/order/filter/id",authenticateToken, orderController.getOrderStatusCounts)
 .post("/order/sales/id",authenticateToken, orderController.getOrderSalesAppById)
 .post("/order/id/user", orderController.getOrderByIdAndClient)
 .post("/order/id/sales",authenticateToken, orderController.getOrderByIdAndSales)
@@ -94,6 +95,8 @@ router
 .delete("/order/id", authenticateToken,orderController.deleteOrderById)
 .post("/order/status",authenticateToken, orderController.getOrderByDeliverStatusAnd)
 .post("/order/status/id", orderController.getOrderByIdAndOrderStatus)
+.post("/order/status/count", orderController.getApprovedOrdersCount)
+.put("/order/status/confirm/id", authenticateToken,orderController.uploadOrderStatus)
 
 .post("/maps/list/id",authenticateToken,clientLocationController.getClientLocationById)
 .post("/maps/id",authenticateToken,clientLocationController.postClientLocation)

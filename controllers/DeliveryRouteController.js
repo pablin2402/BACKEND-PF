@@ -72,6 +72,35 @@ const postNewRoute = (req, res) => {
 const getSalesMan = async (req, res) => {
   await SalesMan.find({ id_owner: String(req.body.id_owner) }).then(p => res.json(p));
 };
+const getDeliveryByIdRoute = async (req, res) => {
+  try {
+    const query = {
+      id_owner: String(req.body.id_owner),
+      _id: new mongoose.Types.ObjectId(req.body._id),
+    };
+
+    if (req.body.startDate) {
+      const startDateUTC = new Date(req.body.startDate);
+      const year = startDateUTC.getUTCFullYear();
+      const month = startDateUTC.getUTCMonth();
+      const day = startDateUTC.getUTCDate();
+
+      const startOfDay = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+      startOfDay.setHours(startOfDay.getHours());
+      const endOfDay = new Date(Date.UTC(year, month, day, 23, 59, 59, 999));
+      endOfDay.setHours(endOfDay.getHours());
+      query.startDate = { $gte: startOfDay, $lte: endOfDay };
+    }
+    const salesManData = await SalesManRoute.find(query)
+      .populate("delivery")
+
+    res.json(salesManData || []);
+
+  } catch (error) {
+    console.error("Error en la búsqueda:", error);
+    res.status(500).json({ message: "Error en la búsqueda", error });
+  }
+};
 const getSalesManByIdRoute = async (req, res) => {
   try {
     const query = {
@@ -263,24 +292,20 @@ const getSalesManByIdAndDayActivity = async (req, res) => {
 };
 const getAllRoutes = async (req, res) => {
   try {
+    console.log(req.body)
     const query = { id_owner: String(req.body.id_owner) };
-
     if (req.body.delivery && req.body.delivery !== "todos") {
       query.delivery = new mongoose.Types.ObjectId(req.body.delivery);
     }
-
     if (req.body.status && req.body.status !== "") {
       query.status = req.body.status;
     }
-
     if (req.body.excludeComplete) {
       query.progress = { $lt: 100 };
     }
-
     const page = parseInt(req.body.page) || 1;
     const limit = 8;
     const skip = (page - 1) * limit;
-
     if (req.body.startDate && req.body.endDate) {
       const startOfDay = new Date(req.body.startDate);
       const endOfDay = new Date(req.body.endDate);

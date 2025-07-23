@@ -28,32 +28,36 @@ const getProductMonthlyPrediction = async (req, res) => {
             const mes = v._id.month.toString().padStart(2, '0');
             const fecha = `${v._id.year}-${mes}-01`;
 
-            if (!productos[nombre]) {
-                productos[nombre] = [];
-            }
-            productos[nombre].push({
-                ds: fecha,
-                y: v.totalVentas
-            });
+            if (!productos[nombre]) productos[nombre] = [];
+            productos[nombre].push({ ds: fecha, y: v.totalVentas });
         });
 
-        // Enviar cada producto al microservicio
         const resultados = {};
         for (let producto in productos) {
-            const { data } = await axios.post('http://localhost:8000/predict', { ventas: productos[producto] });
-            resultados[producto] = data.predicciones;
+            if (productos[producto].length < 3) {
+                console.warn(`Producto ${producto} tiene menos de 3 registros. Omitiendo...`);
+                continue;
+            }
+
+            try {
+                const { data } = await axios.post("http://localhost:8000/predict", {
+                    ventas: productos[producto]
+                });
+                resultados[producto] = data.predicciones;
+            } catch (error) {
+                console.error(`Error al predecir ${producto}:`, error.message);
+                resultados[producto] = { error: "No se pudo predecir" };
+            }
         }
 
         return res.status(200).json({
             success: true,
-            message: 'Predicción generada exitosamente por producto',
+            message: "Predicciones por producto generadas",
             predicciones: resultados
         });
-
     } catch (error) {
-        console.error('Error en la predicción:', error.message);
-        return res.status(500).json({ success: false, message: 'Error al generar la predicción' });
+        console.error("Error general:", error.message);
+        return res.status(500).json({ success: false, message: "Error en la predicción" });
     }
 };
-
 module.exports = { getProductMonthlyPrediction };

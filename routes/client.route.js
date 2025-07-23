@@ -23,7 +23,7 @@ router
 })
 .post("/client",authenticateToken, clientController.postClient)
 .post("/client/message/id", authenticateToken,clientController.getMessagesById)
-.post("/client/list/id", authenticateToken,clientController.getClients)
+.post("/client/list/id",clientController.getClients)
 .post("/client/id", authenticateToken,clientController.getClientInfoById)
 .post("/client/archived",authenticateToken, clientController.getClientsArchived)
 .post("/client/sales",authenticateToken, clientController.getClientInfoByIdAndSales)
@@ -64,7 +64,7 @@ router
 .put("/route/delivery/id",authenticateToken,deliveryRouteController.updateRouteSalesStatus)
 .put("/route/delivery/progress/id",authenticateToken,deliveryRouteController.updateRouteSalesProgress)
 
-.post("/sales/prediction",authenticateToken, salesPrediction.getProductMonthlyPrediction)
+.post("/sales/prediction", salesPrediction.getProductMonthlyPrediction)
 
 
 .post("/order/pay/list/id",authenticateToken, orderPayController.getOrderPay)
