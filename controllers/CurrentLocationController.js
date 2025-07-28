@@ -108,12 +108,12 @@ const getLocationsByDayGrouped = async (req, res) => {
           }
         },
         {
-          $sort: { Timestamp: 1 } // ordenar las ubicaciones por tiempo
+          $sort: { Timestamp: 1 } 
         },
         {
           $group: {
-            _id: "$delivery",        // agrupar por delivery
-            path: { $push: "$$ROOT" } // guardar todas las ubicaciones en orden
+            _id: "$delivery",       
+            path: { $push: "$$ROOT" } 
           }
         },
         {

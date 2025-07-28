@@ -1,14 +1,14 @@
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 const clientSchema = new Schema({
-  name: { type: String, require: true }, //REQUIRED
+  name: { type: String, require: true },
   lastName: { type: String, require: true },
   profilePicture: { type: String, require: true },
-  icon: { type: String, require: true },//REQUIRED or DEFAULT
+  icon: { type: String, require: true },
   creationDate: { type: Date, default: Date.now }, 
   directionId: {type: String, require: true},
-  number:{type: Number, require: true}, //REQUIRED
-  identityNumber:{type: String, require: true}, //REQUIRED
+  number:{type: Number, require: true}, 
+  identityNumber:{type: String, require: true}, 
   company: { type: String, require: true },
   email: { type: String, require: true },
   socialNetwork: { type: String, require: true },

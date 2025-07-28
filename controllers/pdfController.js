@@ -31,7 +31,7 @@ const uploadToDrive = async (file) => {
 
   const fileMetadata = {
     name: file.originalname,
-    parents: ['17jYQWmde6Z7kNFde9707c6_uj-vFUazP'], // ID de la carpeta de destino en Google Drive
+    parents: ['17jYQWmde6Z7kNFde9707c6_uj-vFUazP'],
   };
 
   const media = {

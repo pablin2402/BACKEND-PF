@@ -228,7 +228,6 @@ const getOrderById = async (req, res) => {
     if (status) matchStage.orderStatus = status;
     if (salesId) matchStage.salesId = mongoose.Types.ObjectId(salesId);
     if (paymentType) matchStage.accountStatus = paymentType;
-    console.log(req.body)
     const pipeline = [];
 
     if (startDate && endDate) {
@@ -440,7 +439,6 @@ const getOrderById = async (req, res) => {
 const getOrderStatusCounts = async (req, res) => {
   try {
     const { id_owner,paymentType, payStatus, salesId, fullName, startDate, endDate, region } = req.body;
-    console.log(req.body)
     let matchStage = { id_owner };
     if (region) matchStage.region = region;
     if (payStatus) matchStage.payStatus = payStatus;
@@ -794,7 +792,6 @@ const getOrderByIdAndOrderStatus = async (req, res) => {
     if (salesId) matchStage.salesId = mongoose.Types.ObjectId(salesId);
     if (paymentType) matchStage.accountStatus = paymentType;
 
-    console.log(req.body);
     
     const pipeline = [];
 
@@ -1655,7 +1652,6 @@ const updateOrderTracking = async (req, res) => {
 const uploadOrderStatus = async (req, res) => {
   try {
     const { _id, id_owner, orderStatus } = req.body;
-    console.log(req.body)
     if (!_id || !id_owner || !orderStatus) {
       return res.status(400).send({ message: "Faltan datos: _id, id_owner y orderStatus son requeridos." });
     }

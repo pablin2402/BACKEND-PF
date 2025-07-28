@@ -322,6 +322,40 @@ const deleteClient = async (req, res) => {
   }
   return res.status(200).json({ message: 'Cliente eliminado correctamente' });
 };
+const updateClient = async (req, res) => {
+  console.log(req.body)
+  try {
+    const { _id, name, lastName, sales_id, id_owner } = req.body;
+    console.log(req.body)
+    if (!_id) {
+      return res.status(400).json({ message: "El campo _id es obligatorio" });
+    }
+
+    const updatedClient = await User.findByIdAndUpdate(
+      { _id, id_owner },
+      {
+        $set: {
+          name,
+          lastName,
+          sales_id: new mongoose.Types.ObjectId(sales_id),
+        },
+      },
+      { new: true }
+    );
+
+    if (!updatedClient) {
+      return res.status(404).json({ message: "Cliente no encontrado" });
+    }
+
+    res.status(200).json({
+      message: "Cliente actualizado correctamente",
+      client: updatedClient,
+    });
+  } catch (error) {
+    console.error("Error actualizando cliente:", error);
+    res.status(500).json({ message: "Error al actualizar cliente", error });
+  }
+};
 module.exports = {
-  postNewAccountUser,loginUser,resetPassword, getClientsList,auth,getUser, getClientInfoByIdAndSales,loginUser,getClients, getClientsArchived,getMessagesById, getClientInfoById, postClient, updateUserFile,updateUserStatus, deleteClient
+  postNewAccountUser,updateClient,loginUser,resetPassword, getClientsList,auth,getUser, getClientInfoByIdAndSales,loginUser,getClients, getClientsArchived,getMessagesById, getClientInfoById, postClient, updateUserFile,updateUserStatus, deleteClient
 };

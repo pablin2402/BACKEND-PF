@@ -27,17 +27,19 @@ router
 .post("/client/id", authenticateToken,clientController.getClientInfoById)
 .post("/client/archived",authenticateToken, clientController.getClientsArchived)
 .post("/client/sales",authenticateToken, clientController.getClientInfoByIdAndSales)
+.put("/client/user/id",clientController.updateClient)
 
 .post("/delivery",authenticateToken, deliveryController.postNewDelivery)
 .post("/delivery/list",authenticateToken, deliveryController.getDelivery)
 .post("/delivery/id", deliveryController.getDeliveryById)
+.put("/delivery/status", deliveryController.uploadDeliveryStatus)
 
 .post("/delivery/order/image", deliveryController.postDeliveryOrderPickUp)
 .post("/delivery/order/id", deliveryController.getDeliveryOrderPickUpByOrderId)
 
 
 .put("/client/archived",authenticateToken, clientController.updateUserStatus)
-.post("/sales/list/id",authenticateToken, salesManController.getSalesMan)
+.post("/sales/list/id", salesManController.getSalesMan)
 .post("/sales/id", salesManController.getSalesManById)
 .post("/sales/salesman", authenticateToken,salesManController.postNewAccount)
 .post("/sales/location", authenticateToken,salesManController.getClientLocationById)

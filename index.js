@@ -174,24 +174,21 @@ socketIO.on("connection", (socket) => {
       const messages = await chat.fetchMessages({ limit: 50 }); 
       const processedMessages = await Promise.all(messages.map(async message => {
         if (message.type === 'image' && message.hasMedia) {
-         // const media = await message.downloadMedia();
-          const mediaUrl = await getMediaUrlFromMessage(message); // Función que genera la URL
+          const mediaUrl = await getMediaUrlFromMessage(message);
           return {
             ...message,
             mediaKey: mediaUrl
           };
         }
         if (message.type === 'document' && message.hasMedia) {
-          // const media = await message.downloadMedia();
-           const mediaUrl = await getMediaUrlFromMessage(message); // Función que genera la URL
+           const mediaUrl = await getMediaUrlFromMessage(message); 
            return {
              ...message,
              mediaKey: mediaUrl
            };
          }
          if (message.type === 'ptt' && message.hasMedia) {
-          // const media = await message.downloadMedia();
-           const mediaUrl = await getMediaUrlFromMessage(message); // Función que genera la URL
+           const mediaUrl = await getMediaUrlFromMessage(message); 
            return {
              ...message,
              mediaKey: mediaUrl
@@ -240,16 +237,9 @@ app.use("/whatsapp", apiRoute);
 app.use("/whatsapp", inventaryRoute);
 app.use("/whatsapp", userRoute);
 app.use("/whatsapp", kanbanRoute);
-//const ip = '192.168.0.104';
-//const ip= '192.168.1.66';
-
-//192.168.1.87
-//192.168.0.104
-//app.listen(port,ip, () => {
-//app.listen(port,'0.0.0.0',() => { PARA SUBIR AL SERVIDOR
 
 const port = process.env.PORT || 3041;
 app.listen(port, '0.0.0.0', () => {
-  console.log(`server on port 3023 `);
+  console.log(`Server running on port ${port}`);
 });
 

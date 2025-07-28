@@ -101,12 +101,14 @@ const postDeliveryOrderPickUp = (req, res) => {
 };
 const getDelivery = async (req, res) => {
     try {
-      const { id_owner, page, limit, searchTerm} = req.body;
+      const { id_owner, page, limit, searchTerm,active} = req.body;
   
       const matchStage = {
         id_owner: String(id_owner)
       };
-  
+      if (active === true) {
+        matchStage.active = true;
+      }
       const aggregatePipeline = [
         { $match: matchStage },
         {
@@ -206,14 +208,29 @@ const getDeliveryById = async (req, res) => {
 };
 const getDeliveryLocation = async (req, res) => {
     await Delivery.find({id_owner:String(req.body.id_owner)}).populate("client_location").then(p=>  res.json(p));
-  };
-  
+};
+const uploadDeliveryStatus = async (req, res) => {
+  try {
+    const salesman = await Delivery.findByIdAndUpdate(
+      { _id: new mongoose.Types.ObjectId(req.body._id) },
+      { active: req.body.active },
+      { new: true }
+    );
+    if (!salesman) {
+      return res.status(404).json({ message: 'Delivery no encontrado' });
+    }
+    res.json(salesman);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al actualizar', error });
+  }
+};  
 module.exports = {
     postNewDelivery,
     getDelivery,
     getDeliveryById,
     getDeliveryLocation,
     postDeliveryOrderPickUp,
-    getDeliveryOrderPickUpByOrderId
+    getDeliveryOrderPickUpByOrderId,
+    uploadDeliveryStatus
 };
   
