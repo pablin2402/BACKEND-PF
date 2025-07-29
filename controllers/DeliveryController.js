@@ -193,7 +193,7 @@ const getDelivery = async (req, res) => {
 const getDeliveryById = async (req, res) => {
   try {
     const salesMan = await Delivery.findOne({
-      _id: new mongoose.Types.ObjectId(req.body.id),
+      _id: new mongoose.Types.ObjectId(req.body._id),
       id_owner: String(req.body.id_owner)
     })
     .populate("client_location")
@@ -223,7 +223,8 @@ const uploadDeliveryStatus = async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: 'Error al actualizar', error });
   }
-};  
+}; 
+
 module.exports = {
     postNewDelivery,
     getDelivery,

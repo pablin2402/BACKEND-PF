@@ -86,6 +86,7 @@ router
 .post("/order/products/stadistics",orderController.getMostSoldProducts)
 .post("/order/products/analysis",orderController.predictSalesForTopProducts)
 .post("/order/id", orderController.getOrderById)
+.post("/order/deliver/id", orderController.getOrderByIdAndDelivery)
 .post("/order/filter/id", orderController.getOrderStatusCounts)
 .post("/order/sales/id",authenticateToken, orderController.getOrderSalesAppById)
 .post("/order/id/user", orderController.getOrderByIdAndClient)

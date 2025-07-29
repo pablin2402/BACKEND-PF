@@ -187,7 +187,7 @@ const predictSalesForTopProducts = async (req, res) => {
         console.log("---------------------------------------------------");
 
         try {
-          const response = await axios.post("http://192.168.0.104:5003/predict", {
+          const response = await axios.post("http://192.168.0.105:5003/predict", {
             series,
           });
 
@@ -1396,7 +1396,107 @@ const getOrderByIdAndClient = async (req, res) => {
     res.status(500).json({ message: "Error al obtener las órdenes", error });
   }
 };
+const getOrderByIdAndDelivery = async (req, res) => {
+  try {
+    const {
+      id_owner,
+      orderTrackId,
+      startDate,
+      endDate,
+      page,
+      limit
+    } = req.body;
 
+    if (!mongoose.Types.ObjectId.isValid(orderTrackId)) {
+      return res.status(400).json({ message: "salesId no es un ObjectId válido" });
+    }
+
+    const matchStage = {
+      id_owner,
+      orderTrackId: new mongoose.Types.ObjectId(orderTrackId),
+    };
+
+    const pipeline = [];
+
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const endD = new Date(endDate);
+      endD.setHours(23, 59, 59, 999);
+
+      if (start > endD) {
+        return res.status(400).json({ message: "startDate no puede ser mayor a endDate" });
+      }
+
+      pipeline.push(
+        {
+          $addFields: {
+            creationDateLocal: {
+              $dateSubtract: {
+                startDate: "$creationDate",
+                unit: "hour",
+                amount: 4,
+              },
+            },
+          },
+        },
+        {
+          $match: {
+            ...matchStage,
+            creationDateLocal: {
+              $gte: new Date(`${startDate}T00:00:00Z`),
+              $lte: new Date(`${endDate}T23:59:59Z`),
+            },
+          },
+        }
+      );
+    } else {
+      pipeline.push({ $match: matchStage });
+    }
+
+    pipeline.push(
+      {
+        $lookup: {
+          from: "orderpays",
+          localField: "_id",
+          foreignField: "orderId",
+          as: "pagos"
+        }
+      },
+      {
+        $addFields: {
+          totalPagado: { $sum: "$pagos.total" },
+          restante: { $subtract: ["$totalAmount", { $sum: "$pagos.total" }] }
+        }
+      }
+    );
+
+    const totalPipeline = [...pipeline, { $count: "total" }];
+    const totalResult = await Order.aggregate(totalPipeline);
+    const total = totalResult[0]?.total || 0;
+
+    pipeline.push(
+      { $sort: { creationDate: -1 } },
+      { $skip: (page - 1) * limit },
+      { $limit: parseInt(limit) }
+    );
+
+    const orders = await Order.aggregate(pipeline);
+    await Order.populate(orders, [
+      { path: "orderTrackId" },
+      { path: "id_client" }
+    ]);
+
+    res.json({
+      orders,
+      total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page
+    });
+  } catch (error) {
+    console.error("Error al obtener órdenes:", error);
+    res.status(500).json({ message: "Error al obtener las órdenes", error });
+  }
+};
 const getOrderByIdAndSales = async (req, res) => {
   try {
     const {
@@ -1690,9 +1790,253 @@ const getApprovedOrdersCount = async (req, res) => {
     res.status(500).send({ message: "Error en el servidor." });
   }
 };
+const getOrderByIdAndDeliver = async (req, res) => {
+  try {
+    const {
+      orderTrackId,
+      id_owner,
+      page,
+      limit,
+      startDate,
+      endDate,
+      payStatus,
+      fullName,
+    } = req.body;
+
+    const matchStage = {
+      orderTrackId: mongoose.Types.ObjectId(orderTrackId),
+      id_owner,
+    };
+
+    const pipeline = [];
+
+    if (startDate && endDate) {
+      pipeline.push(
+        {
+          $addFields: {
+            creationDateLocal: {
+              $dateSubtract: {
+                startDate: "$creationDate",
+                unit: "hour",
+                amount: 4,
+              },
+            },
+          },
+        },
+        {
+          $match: {
+            ...matchStage,
+            creationDateLocal: {
+              $gte: new Date(`${startDate}T00:00:00Z`),
+              $lte: new Date(`${endDate}T23:59:59Z`),
+            },
+          },
+        }
+      );
+    } else {
+      pipeline.push({ $match: matchStage });
+    }
+
+    pipeline.push(
+      {
+        $lookup: {
+          from: "orderpays",
+          localField: "_id",
+          foreignField: "orderId",
+          as: "pagos",
+        },
+      },
+      {
+        $addFields: {
+          pagosOrdenados: {
+            $cond: [
+              { $gt: [{ $size: "$pagos" }, 0] },
+              {
+                $sortArray: {
+                  input: "$pagos",
+                  sortBy: { creationDate: 1 },
+                },
+              },
+              [],
+            ],
+          },
+        },
+      },
+      {
+        $addFields: {
+          pagosConAcumulado: {
+            $cond: [
+              { $gt: [{ $size: "$pagosOrdenados" }, 0] },
+              {
+                $reduce: {
+                  input: "$pagosOrdenados",
+                  initialValue: {
+                    acumulado: 0,
+                    pagos: [],
+                    fechaUltimoPago: null,
+                  },
+                  in: {
+                    $let: {
+                      vars: {
+                        nuevoTotal: {
+                          $add: ["$$value.acumulado", "$$this.total"],
+                        },
+                      },
+                      in: {
+                        acumulado: "$$nuevoTotal",
+                        pagos: {
+                          $concatArrays: ["$$value.pagos", ["$$this"]],
+                        },
+                        fechaUltimoPago: {
+                          $cond: [
+                            {
+                              $and: [
+                                { $gte: ["$$nuevoTotal", "$totalAmount"] },
+                                { $eq: ["$$value.fechaUltimoPago", null] },
+                              ],
+                            },
+                            "$$this.creationDate",
+                            "$$value.fechaUltimoPago",
+                          ],
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              {
+                acumulado: 0,
+                pagos: [],
+                fechaUltimoPago: null,
+              },
+            ],
+          },
+        },
+      },
+      {
+        $addFields: {
+          totalPagado: "$pagosConAcumulado.acumulado",
+          fechaUltimoPago: "$pagosConAcumulado.fechaUltimoPago",
+          restante: {
+            $subtract: ["$totalAmount", "$pagosConAcumulado.acumulado"],
+          },
+        },
+      },
+      {
+        $addFields: {
+          diasMora: {
+            $cond: [
+              { $ne: ["$fechaUltimoPago", null] },
+              {
+                $dateDiff: {
+                  startDate: {
+                    $dateSubtract: {
+                      startDate: "$dueDate",
+                      unit: "hour",
+                      amount: 4,
+                    },
+                  },
+                  endDate: {
+                    $dateSubtract: {
+                      startDate: "$fechaUltimoPago",
+                      unit: "hour",
+                      amount: 4,
+                    },
+                  },
+                  unit: "day",
+                },
+              },
+              {
+                $dateDiff: {
+                  startDate: {
+                    $dateSubtract: {
+                      startDate: "$dueDate",
+                      unit: "hour",
+                      amount: 4,
+                    },
+                  },
+                  endDate: {
+                    $dateSubtract: {
+                      startDate: "$$NOW",
+                      unit: "hour",
+                      amount: 4,
+                    },
+                  },
+                  unit: "day",
+                },
+              },
+            ],
+          },
+          payStatus: {
+            $cond: {
+              if: { $gt: ["$restante", 0] },
+              then: "Pendiente",
+              else: "Pagado",
+            },
+          },
+        },
+      },
+      ...(payStatus
+        ? [
+            {
+              $match: {
+                payStatus: payStatus,
+              },
+            },
+          ]
+        : [])
+    );
+
+    let orders = await Order.aggregate(pipeline);
+
+    await Order.populate(orders, [
+      { path: "salesId" },
+      { path: "orderTrackId" },
+    ]);
+
+    if (fullName) {
+      const clientNameLower = fullName
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+
+      orders = orders.filter((order) => {
+        const name = (order.orderTrackId?.fullName || "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase();
+        const lastName = (order.orderTrackId?.lastName || "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase();
+        return (
+          name.includes(clientNameLower) || lastName.includes(clientNameLower)
+        );
+      });
+    }
+
+    const totalOrders = orders.length;
+
+    const paginatedOrders = orders.slice(
+      (parseInt(page) - 1) * parseInt(limit),
+      parseInt(page) * parseInt(limit)
+    );
+
+    res.json({
+      orders: paginatedOrders,
+      totalPages: Math.ceil(totalOrders / limit),
+      currentPage: parseInt(page),
+      items: totalOrders
+    });
+  } catch (error) {
+    console.error("Error al obtener órdenes con pagos:", error);
+    res.status(500).json({ message: "Error al obtener las órdenes", error });
+  }
+};
 
 
 module.exports = {
+  getOrderByIdAndDeliver,
   getOrderById,
   getOrderStatusCounts,
   getApprovedOrdersCount,
@@ -1711,5 +2055,6 @@ module.exports = {
   getMostSoldProducts,
   predictSalesForTopProducts,
   getOrderByIdAndOrderStatus,
-  getOrderSalesAppById
+  getOrderSalesAppById,
+  getOrderByIdAndDelivery
 };
