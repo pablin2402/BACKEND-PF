@@ -213,7 +213,7 @@ const predictSalesForTopProducts = async (req, res) => {
 
     res.json({ data: predictions });
   } catch (err) {
-    console.error("🚨 Error general al predecir:", err);
+    console.error("Error general al predecir:", err);
     res.status(500).json({ error: "Error del servidor" });
   }
 };
