@@ -73,7 +73,7 @@ router
 .post("/order/pay/list/calendar",authenticateToken, orderPayController.getOrderPayByCalendar)
 .post("/order/pay/sales/id",authenticateToken, orderPayController.getOrderPayBySales)
 .post("/order/pay",authenticateToken,orderPayController.postOrderPay)
-.post("/order/pay/id",authenticateToken, orderPayController.getOrderPayId)
+.post("/order/pay/id", orderPayController.getOrderPayId)
 .put("/order/pay/status/id",authenticateToken, orderPayController.updateOrderPayStatus);
 
 

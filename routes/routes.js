@@ -17,6 +17,7 @@ const orderTrackController = require("../controllers/OrderTrackController.js");
 const salesObjectiveRegionController = require("../controllers/SalesObjectiveRegionController.js");
 const administratorController = require("../controllers/AdministratorsController.js");
 const currentLocationController = require("../controllers/CurrentLocationController.js");
+const paymentController = require("../controllers/PaymentController.js");
 
 router
 .post("/administrator",administratorController.postNewAccount)
@@ -25,6 +26,9 @@ router
 .post("/location/list",currentLocationController.postCurrentLocation)
 .post("/location/list/id",currentLocationController.getLastLocation)
 .post("/location/list/day/id",currentLocationController.getLocationsByDayGrouped)
+
+.post("/create",paymentController.createOrder)
+.post("/status", paymentController.orderStatus)
 
 .post("/order/objective",orderController.getSalesSummary)
 .post("/order/objective/region",orderController.getCategorySummary)
@@ -49,7 +53,7 @@ router
 .post("/sales/objective/list",salesObjectiveRegionController.getSalesObjectiveSalesManByIdAndOwner)
 
 .post("/order/track",orderTrackController.createOrderEvent)
-.post("/order/track/list",authenticateToken,orderTrackController.getOrderEventsByOrderId)
+.post("/order/track/list",orderTrackController.getOrderEventsByOrderId)
 
 .post("/automatization",automatizationController.getAutomatization)
 .post("/automatization/new",automatizationController.postAutomatization)

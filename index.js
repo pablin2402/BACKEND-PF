@@ -32,7 +32,7 @@ app.use("/whatsapp", userRoute);
 app.use("/whatsapp", kanbanRoute);
 
 // Escuchar
-const port = process.env.PORT || 3041;
+const port = process.env.PORT || 3047;
 app.listen(port, '0.0.0.0', () => {
   console.log(`Server running on port ${port}`);
 });

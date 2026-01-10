@@ -44,7 +44,7 @@ const postNewDelivery = (req, res) => {
 const getDeliveryOrderPickUpByOrderId = async (req, res) => {
   try {
     const { orderId, id_owner } = req.body;
-
+    console.log(req.body)
     if (!orderId || !id_owner) {
       return res.status(400).json({ message: "Faltan campos requeridos: orderId o id_owner" });
     }
