@@ -1,27 +1,34 @@
-const express = require("express");
-const morgan = require('morgan');
-const cors = require('cors');
-const bodyparser = require('body-parser');
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 
+const express = require("express");
+const morgan = require("morgan");
+const cors = require("cors");
+const bodyparser = require("body-parser");
+
+// DB
+require("./database");
+
+// Routes / Controllers montados como routers
 const apiRoute = require("./routes/routes");
 const inventaryRoute = require("./routes/inventary.route");
 const userRoute = require("./routes/client.route");
-const kanbanRoute = require("./routes/kanban.route");
 const pdfController = require("./controllers/pdfController");
 const triggerController = require("./controllers/TriggerController");
 
-// Conexión DB
-require('./database');
-
 const app = express();
 
-// Middlewares
-app.use(morgan('dev'));
+// Middlewares base
+app.use(morgan("dev"));
 app.use(bodyparser.urlencoded({ extended: false }));
-app.use(bodyparser.json()); 
+app.use(bodyparser.json());
 app.use(express.json());
 app.use(cors());
+
+// Debug útil (NO rompe nada)
+console.log("SERVER START");
+console.log("PORT:", process.env.PORT);
+console.log("JWT_SECRET loaded:", !!process.env.JWT_SECRET);
 
 // Rutas
 app.use("/whatsapp", triggerController);
@@ -29,10 +36,14 @@ app.use("/whatsapp", pdfController);
 app.use("/whatsapp", apiRoute);
 app.use("/whatsapp", inventaryRoute);
 app.use("/whatsapp", userRoute);
-app.use("/whatsapp", kanbanRoute);
+
+// Health check
+app.get("/health", (req, res) => {
+  res.json({ ok: true, jwtSecretLoaded: !!process.env.JWT_SECRET });
+});
 
 // Escuchar
-const port = process.env.PORT || 3047;
-app.listen(port, '0.0.0.0', () => {
+const port = process.env.PORT || 3051;
+app.listen(port, "0.0.0.0", () => {
   console.log(`Server running on port ${port}`);
 });

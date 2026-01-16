@@ -43,6 +43,7 @@ const postNewDelivery = (req, res) => {
 };
 const getDeliveryOrderPickUpByOrderId = async (req, res) => {
   try {
+    
     const { orderId, id_owner } = req.body;
     console.log(req.body)
     if (!orderId || !id_owner) {
@@ -52,8 +53,9 @@ const getDeliveryOrderPickUpByOrderId = async (req, res) => {
     const result = await DeliveryOrderPickUp.findOne({
       orderId: new mongoose.Types.ObjectId(orderId),
       id_owner: id_owner
-    }).populate("delivery").
-    populate("orderId");
+    })
+    .populate("delivery")
+    .populate("orderId");
 
     if (!result) {
       return res.status(404).json({ message: "Registro no encontrado" });

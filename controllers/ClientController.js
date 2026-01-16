@@ -105,35 +105,56 @@ function auth(req, res, next) {
     res.status(400).send('Invalid token.');
   }
 }
-const getUser = async (req, res) =>{
-    try {
-        const usuarioDB = await Client.findOne({email: req.body.email});
-    
-        if(!usuarioDB){
-          return res.status(400).json({
-            mensaje: 'Usuario! o contraseña inválidos',
-          });
-        }
-        if( !bcrypt.compareSync(req.body.password, usuarioDB.password) ){
-          return res.status(400).json({
-            mensaje: 'Usuario o contraseña! inválidos',
-          });
-        }
-        let token = jwt.sign({
-            data: usuarioDB
-          }, 'secret', { expiresIn: 60 * 60 * 24 * 30});
+const getUser = async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
 
-        return res.json({
-          usuarioDB,
-          token: token
-        })
-        
-      } catch (error) {
-        return res.status(400).json({
-          mensaje: 'Ocurrio un error',
-          error
-        });
-      }
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email y password son requeridos" });
+    }
+
+    const usuarioDB = await Client.findOne({ email: email.trim().toLowerCase() });
+    if (!usuarioDB) {
+      return res.status(400).json({ message: "Usuario o contraseña inválidos" });
+    }
+
+    const ok = bcrypt.compareSync(password, usuarioDB.password);
+    if (!ok) {
+      return res.status(400).json({ message: "Usuario o contraseña inválidos" });
+    }
+
+    const JWT_SECRET = process.env.JWT_SECRET;
+
+    if (!JWT_SECRET) {
+      return res.status(500).json({ message: "JWT_SECRET missing in server env" });
+    }
+    
+    const token = jwt.sign(
+      {
+        sub: usuarioDB._id.toString(),
+        role: usuarioDB.role,
+        id_owner: usuarioDB.id_owner,
+        salesMan: usuarioDB.salesMan,
+      },
+      JWT_SECRET,
+      { expiresIn: "30d" }
+    );
+    
+
+    return res.json({
+      usuarioDB: {
+        _id: usuarioDB._id,
+        id_owner: usuarioDB.id_owner,
+        salesMan: usuarioDB.salesMan,
+        role: usuarioDB.role,
+        email: usuarioDB.email,
+      },
+      token,
+    });
+  } catch (error) {
+    console.error("getUser error:", error);
+    return res.status(500).json({ message: "Ocurrió un error", error: String(error) });
+  }
 };
 const getClients = async (req, res) => {
   try {

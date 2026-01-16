@@ -3,7 +3,7 @@ const router = expres.Router();
 
 const inventoryController = require("../controllers/InventoryController");
 const inventaryManagementController = require("../controllers/InventaryManagementController");
-const {authenticateToken} = require("../middlewares/authentication.js");
+const authenticateToken = require("../middlewares/authentication.js");
 
 router
 .post("/inventory/list",authenticateToken, inventoryController.getListOfInventary)

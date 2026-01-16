@@ -6,7 +6,7 @@ const carrouselController = require("../controllers/CarrouselController");
 const quotationController = require("../controllers/QuotationController");
 const priceController = require("../controllers/PriceController");
 const userController = require("../controllers/ClientController");
-const {authenticateToken} = require("../middlewares/authentication.js");
+const authenticateToken = require("../middlewares/authentication.js");
 const orderController = require("../controllers/OrderController");
 const clientLocationController = require("../controllers/ClientLocationController");
 const clientController = require("../controllers/ClientInfoController");
@@ -20,44 +20,45 @@ const currentLocationController = require("../controllers/CurrentLocationControl
 const paymentController = require("../controllers/PaymentController.js");
 
 router
-.post("/administrator",administratorController.postNewAccount)
+.post("/login", userController.getUser)
+.post("/administrator",authenticateToken,administratorController.postNewAccount)
 .post("/administrator/list",administratorController.getClientsList)
 
-.post("/location/list",currentLocationController.postCurrentLocation)
-.post("/location/list/id",currentLocationController.getLastLocation)
-.post("/location/list/day/id",currentLocationController.getLocationsByDayGrouped)
+.post("/location/list",authenticateToken,currentLocationController.postCurrentLocation)
+.post("/location/list/id",authenticateToken, currentLocationController.getLastLocation)
+.post("/location/list/day/id",authenticateToken, currentLocationController.getLocationsByDayGrouped)
 
-.post("/create",paymentController.createOrder)
-.post("/status", paymentController.orderStatus)
+.post("/create",authenticateToken, paymentController.createOrder)
+.post("/status",authenticateToken,  paymentController.orderStatus)
 
-.post("/order/objective",orderController.getSalesSummary)
-.post("/order/objective/region",orderController.getCategorySummary)
-.post("/order/objective/region/id",salesObjectiveRegionController.getObjectiveWithSalesData)
-.post("/order/objective/region/product",salesObjectiveRegionController.getObjectiveWithSalesDataProducts)
-.put("/order/objective/region/product",salesObjectiveRegionController.updateSalesObjectiveRegion)
-.delete("/order/objective/region/product",salesObjectiveRegionController.deleteSalesObjectiveRegion)
+.post("/order/objective",authenticateToken, orderController.getSalesSummary)
+.post("/order/objective/region",authenticateToken, orderController.getCategorySummary)
+.post("/order/objective/region/id",authenticateToken, salesObjectiveRegionController.getObjectiveWithSalesData)
+.post("/order/objective/region/product",authenticateToken, salesObjectiveRegionController.getObjectiveWithSalesDataProducts)
+.put("/order/objective/region/product",authenticateToken, salesObjectiveRegionController.updateSalesObjectiveRegion)
+.delete("/order/objective/region/product",authenticateToken, salesObjectiveRegionController.deleteSalesObjectiveRegion)
 
-.put("/order/objective/product",salesObjectiveRegionController.updateSalesObjective)
-.delete("/order/objective/product",salesObjectiveRegionController.deleteSalesObjective)
+.put("/order/objective/product",authenticateToken, salesObjectiveRegionController.updateSalesObjective)
+.delete("/order/objective/product",authenticateToken, salesObjectiveRegionController.deleteSalesObjective)
 
 
-.put("/order/status/id",orderController.updateOrderTracking)
+.put("/order/status/id",authenticateToken, orderController.updateOrderTracking)
 
-.post("/sales/objective/regional/id",salesObjectiveRegionController.getSalesObjectiveRegionByIdAndOwner)
-.post("/sales/objective/regional",salesObjectiveRegionController.postSalesObjectiveRegion)
-.post("/sales/objective/general",salesObjectiveRegionController.getSalesObjectiveGeneralByIdAndOwner)
-.post("/sales/objective/id",salesObjectiveRegionController.postSalesObjective)
-.post("/sales/objective/region/order",salesObjectiveRegionController.getOrdersWithSalesObjective)
-.post("/sales/objective/national",salesObjectiveRegionController.getSalesDataByLyne)
-.post("/sales/objective/sales",salesObjectiveRegionController.postSalesObjectiveSalesMan)
-.post("/sales/objective/list",salesObjectiveRegionController.getSalesObjectiveSalesManByIdAndOwner)
+.post("/sales/objective/regional/id",authenticateToken, salesObjectiveRegionController.getSalesObjectiveRegionByIdAndOwner)
+.post("/sales/objective/regional",authenticateToken, salesObjectiveRegionController.postSalesObjectiveRegion)
+.post("/sales/objective/general",authenticateToken, salesObjectiveRegionController.getSalesObjectiveGeneralByIdAndOwner)
+.post("/sales/objective/id",authenticateToken, salesObjectiveRegionController.postSalesObjective)
+.post("/sales/objective/region/order",authenticateToken, salesObjectiveRegionController.getOrdersWithSalesObjective)
+.post("/sales/objective/national",authenticateToken, salesObjectiveRegionController.getSalesDataByLyne)
+.post("/sales/objective/sales",authenticateToken, salesObjectiveRegionController.postSalesObjectiveSalesMan)
+.post("/sales/objective/list",authenticateToken, salesObjectiveRegionController.getSalesObjectiveSalesManByIdAndOwner)
 
-.post("/order/track",orderTrackController.createOrderEvent)
-.post("/order/track/list",orderTrackController.getOrderEventsByOrderId)
+.post("/order/track",authenticateToken, orderTrackController.createOrderEvent)
+.post("/order/track/list",authenticateToken, orderTrackController.getOrderEventsByOrderId)
 
-.post("/automatization",automatizationController.getAutomatization)
-.post("/automatization/new",automatizationController.postAutomatization)
-.post("/automatization/list",automatizationController.postAutomatizationList)
+.post("/automatization",authenticateToken, automatizationController.getAutomatization)
+.post("/automatization/new",authenticateToken, automatizationController.postAutomatization)
+.post("/automatization/list",authenticateToken, automatizationController.postAutomatizationList)
 .put("/automatization/list/id", authenticateToken,automatizationController.uploadAutomatizationStatus)
 
 
@@ -80,30 +81,29 @@ router
 .post("/price",authenticateToken, priceController.postPrice)
 .put("/price",authenticateToken, priceController.uploadPriceProduct)
 
-.post("/user", userController.postNewAccountUser)
-.post("/login", userController.getUser)
-.put("/password", userController.resetPassword)
+.post("/user",authenticateToken,  userController.postNewAccountUser)
+.put("/password",authenticateToken,  userController.resetPassword)
 .put("/user/id",authenticateToken, userController.updateUserFile)
 .delete("/user/id",authenticateToken, userController.deleteClient)
 
 .post("/order", authenticateToken,orderController.postOrder)
-.post("/order/products/stadistics",orderController.getMostSoldProducts)
-.post("/order/products/analysis",orderController.predictSalesForTopProducts)
-.post("/order/id", orderController.getOrderById)
-.post("/order/deliver/id", orderController.getOrderByIdAndDelivery)
-.post("/order/filter/id", orderController.getOrderStatusCounts)
+.post("/order/products/stadistics",authenticateToken, orderController.getMostSoldProducts)
+.post("/order/products/analysis",authenticateToken, orderController.predictSalesForTopProducts)
+.post("/order/id", authenticateToken,orderController.getOrderById)
+.post("/order/deliver/id",authenticateToken, orderController.getOrderByIdAndDelivery)
+.post("/order/filter/id", authenticateToken,orderController.getOrderStatusCounts)
 .post("/order/sales/id",authenticateToken, orderController.getOrderSalesAppById)
-.post("/order/id/user", orderController.getOrderByIdAndClient)
-.post("/order/id/sales",authenticateToken, orderController.getOrderByIdAndSales)
+.post("/order/id/user", authenticateToken, orderController.getOrderByIdAndClient)
+.post("/order/id/sales", authenticateToken, orderController.getOrderByIdAndSales)
 .post("/order/id/statistics",authenticateToken, orderController.getOrderSalesById)
 .post("/order/id/year",authenticateToken, orderController.getOrdersByYear)
 .delete("/order/id", authenticateToken,orderController.deleteOrderById)
 .post("/order/status",authenticateToken, orderController.getOrderByDeliverStatusAnd)
-.post("/order/status/id", orderController.getOrderByIdAndOrderStatus)
-.post("/order/status/count", orderController.getApprovedOrdersCount)
+.post("/order/status/id", authenticateToken, orderController.getOrderByIdAndOrderStatus)
+.post("/order/status/count", authenticateToken, orderController.getApprovedOrdersCount)
 .put("/order/status/confirm/id", authenticateToken,orderController.uploadOrderStatus)
 
-.post("/maps/list/id",clientLocationController.getClientLocationById)
+.post("/maps/list/id",authenticateToken, clientLocationController.getClientLocationById)
 .post("/maps/id",authenticateToken,clientLocationController.postClientLocation)
 .post("/client/info/id",authenticateToken,clientLocationController.getClientInfoById)
 .post("/maps/list/sales/id",authenticateToken,clientLocationController.getClientLocationByIdAndSales)

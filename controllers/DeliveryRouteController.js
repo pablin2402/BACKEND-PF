@@ -292,6 +292,7 @@ const getSalesManByIdAndDayActivity = async (req, res) => {
 };
 const getAllRoutes = async (req, res) => {
   try {
+    console.log(req.body)
     const query = { id_owner: String(req.body.id_owner) };
     if (req.body.delivery && req.body.delivery !== "todos") {
       query.delivery = new mongoose.Types.ObjectId(req.body.delivery);
@@ -303,7 +304,7 @@ const getAllRoutes = async (req, res) => {
       query.progress = { $lt: 100 };
     }
     const page = parseInt(req.body.page) || 1;
-    const limit = 8;
+    const limit = 1000;
     const skip = (page - 1) * limit;
     if (req.body.startDate && req.body.endDate) {
       const startOfDay = new Date(req.body.startDate);
