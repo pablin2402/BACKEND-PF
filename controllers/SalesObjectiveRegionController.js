@@ -385,7 +385,6 @@ const getObjectiveWithSalesData = async (req, res) => {
 const getOrdersWithSalesObjective = async (req, res) => {
   try {
     const { id_owner, startDate: inputStart, endDate: inputEnd } = req.body;
-
     if (!id_owner) {
       return res.status(400).json({ message: "id_owner es requerido" });
     }

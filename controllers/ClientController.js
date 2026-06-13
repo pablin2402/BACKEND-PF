@@ -2,381 +2,301 @@ const Client = require("../models/Client");
 const User = require("../models/User");
 const Message = require("../models/Message");
 const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
-const bcrypt = require('bcryptjs');
-const saltRounds = 10;
-const jwt = require('jsonwebtoken');
+const SALT_ROUNDS = 10;
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error("FATAL: JWT_SECRET no está definido en las variables de entorno");
+  process.exit(1);
+}
+
+const TOKEN_EXPIRY = "24h";
+
+const normalizeEmail = (email) => (email || "").trim().toLowerCase();
+
+const validatePassword = (password) => {
+  if (!password || password.length < 8) return "La contraseña debe tener al menos 8 caracteres";
+  if (!/[A-Z]/.test(password)) return "Debe contener al menos una mayúscula";
+  if (!/[0-9]/.test(password)) return "Debe contener al menos un número";
+  return null;
+};
+
+const buildToken = (user) => jwt.sign(
+  { sub: user._id.toString(), role: user.role, id_owner: user.id_owner, salesMan: user.salesMan },
+  JWT_SECRET,
+  { expiresIn: TOKEN_EXPIRY }
+);
+
+const loginFailedMsg = { message: "Credenciales inválidas" };
+
 const getClientsList = async (req, res) => {
   try {
-    const clients = await Client.find({ id_owner: String(req.body.id_owner) })
-      .populate("salesMan"); 
-
+    const clients = await Client.find({ id_owner: String(req.body.id_owner) }).populate("salesMan");
     res.json(clients);
   } catch (error) {
-    console.error("Error al obtener la lista de clientes:", error);
     res.status(500).json({ message: "Error al obtener los clientes." });
   }
 };
 
-const postNewAccountUser = (req, res) => {
+const postNewAccountUser = async (req, res) => {
   try {
-   const client = new Client({
-        email: req.body.email,
-        password: bcrypt.hashSync(req.body.password, saltRounds),
-        role: req.body.role,
-        id_owner: req.body.id_owner,
-        active: req.body.active,
-        region: req.body.region,
-        salesMan: new mongoose.Types.ObjectId(req.body.salesMan)
+    const { email, password, role, id_owner, active, region, salesMan } = req.body;
+
+    if (!email || !password) return res.status(400).json({ message: "Email y contraseña son requeridos" });
+
+    const passError = validatePassword(password);
+    if (passError) return res.status(400).json({ message: passError });
+
+    const normalized = normalizeEmail(email);
+    const exists = await Client.findOne({ email: normalized });
+    if (exists) return res.status(409).json({ message: "El correo ya está registrado" });
+
+    const client = new Client({
+      email: normalized,
+      password: await bcrypt.hash(password, SALT_ROUNDS),
+      role: role || "SALES",
+      id_owner,
+      active: active !== undefined ? active : true,
+      region,
+      salesMan: salesMan ? new mongoose.Types.ObjectId(salesMan) : undefined,
     });
-    client.save((err,client) => {
-      if (err) {
-        res.status(500).send({ message: err });
-        return;
-      }
-      res.status(200).send({
-        id:client._id,
-        email: client.email,
-        active: client.active,
-        role: client.role,
-        region: client.region,
-        id_owner: client.id_owner,
-        salesMan: client.salesMan
-      });
+
+    const saved = await client.save();
+    res.status(201).json({
+      id: saved._id,
+      email: saved.email,
+      active: saved.active,
+      role: saved.role,
+      region: saved.region,
+      id_owner: saved.id_owner,
+      salesMan: saved.salesMan,
     });
   } catch (e) {
+    if (e.code === 11000) return res.status(409).json({ message: "El correo ya está registrado" });
+    res.status(500).json({ message: "Error al crear la cuenta" });
   }
 };
-const JWT_SECRET = process.env.JWT_SECRET || "secret";
 
 const loginUser = async (req, res) => {
-  const { email, password } = req.body;
-
   try {
-    const user = await Client.findOne({ email }).populate("salesMan"); 
-    ; 
-    const passwordMatch = await bcrypt.compare(password, user.password);
-    if (!user || !passwordMatch) {
-      return res.status(401).send({ message: "Usuario o contraseña no coinciden" });
-    }
-    const token = jwt.sign(
-      { id: user._id, id_owner: user.id_owner },
-      JWT_SECRET,
-      { expiresIn: "24h" }
-    );
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ message: "Email y contraseña requeridos" });
 
-    res.send({ message: "Login successful", user, token });
+    const user = await Client.findOne({ email: normalizeEmail(email) }).populate("salesMan");
+    if (!user) return res.status(401).json(loginFailedMsg);
 
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(401).json(loginFailedMsg);
+
+    const token = buildToken(user);
+    res.json({ message: "Login successful", user, token });
   } catch (error) {
-    console.error("Error en login:", error);
-    res.status(500).send({ message: "Error interno del servidor" });
+    res.status(500).json({ message: "Error interno del servidor" });
   }
 };
-const resetPassword = async (req, res) => {
-  const { email, newPassword } = req.body;
 
-  try {
-    const user = await Client.findOne({ email });
-    if (!user) {
-      return res.status(404).send({ message: "Usuario no encontrado con esos datos" });
-    }
-
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    user.password = hashedPassword;
-
-    await user.save();
-
-    res.send({ message: "Contraseña actualizada correctamente" });
-  } catch (error) {
-    console.error("Error al restablecer contraseña:", error);
-    res.status(500).send({ message: "Error del servidor" });
-  }
-};
-function auth(req, res, next) {
-  const token = req.header('x-auth-token');
-  if (!token) {
-    return res.status(401).send('Access denied. No token provided.');
-  }
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (ex) {
-    res.status(400).send('Invalid token.');
-  }
-}
 const getUser = async (req, res) => {
   try {
     const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ message: "Email y contraseña requeridos" });
 
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email y password son requeridos" });
-    }
+    const user = await Client.findOne({ email: normalizeEmail(email) });
+    if (!user) return res.status(401).json(loginFailedMsg);
 
-    const usuarioDB = await Client.findOne({ email: email.trim().toLowerCase() });
-    if (!usuarioDB) {
-      return res.status(400).json({ message: "Usuario o contraseña inválidos" });
-    }
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(401).json(loginFailedMsg);
 
-    const ok = bcrypt.compareSync(password, usuarioDB.password);
-    if (!ok) {
-      return res.status(400).json({ message: "Usuario o contraseña inválidos" });
-    }
-
-    const JWT_SECRET = process.env.JWT_SECRET;
-
-    if (!JWT_SECRET) {
-      return res.status(500).json({ message: "JWT_SECRET missing in server env" });
-    }
-    
-    const token = jwt.sign(
-      {
-        sub: usuarioDB._id.toString(),
-        role: usuarioDB.role,
-        id_owner: usuarioDB.id_owner,
-        salesMan: usuarioDB.salesMan,
-      },
-      JWT_SECRET,
-      { expiresIn: "30d" }
-    );
-    
-
-    return res.json({
-      usuarioDB: {
-        _id: usuarioDB._id,
-        id_owner: usuarioDB.id_owner,
-        salesMan: usuarioDB.salesMan,
-        role: usuarioDB.role,
-        email: usuarioDB.email,
-      },
+    const token = buildToken(user);
+    res.json({
+      usuarioDB: { _id: user._id, id_owner: user.id_owner, salesMan: user.salesMan, role: user.role, email: user.email },
       token,
     });
   } catch (error) {
-    console.error("getUser error:", error);
-    return res.status(500).json({ message: "Ocurrió un error", error: String(error) });
+    res.status(500).json({ message: "Error interno del servidor" });
   }
 };
+
+const resetPassword = async (req, res) => {
+  try {
+    const { email, oldPassword, newPassword } = req.body;
+    if (!email || !newPassword) return res.status(400).json({ message: "Datos incompletos" });
+
+    const passError = validatePassword(newPassword);
+    if (passError) return res.status(400).json({ message: passError });
+
+    const user = await Client.findOne({ email: normalizeEmail(email) });
+    if (!user) return res.status(404).json({ message: "Usuario no encontrado" });
+
+    if (oldPassword) {
+      const match = await bcrypt.compare(oldPassword, user.password);
+      if (!match) return res.status(401).json({ message: "Contraseña actual incorrecta" });
+    }
+
+    user.password = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    await user.save();
+    res.json({ message: "Contraseña actualizada correctamente" });
+  } catch (error) {
+    res.status(500).json({ message: "Error del servidor" });
+  }
+};
+
+function auth(req, res, next) {
+  const header = req.header("Authorization") || req.header("x-auth-token");
+  const token = header?.startsWith("Bearer ") ? header.slice(7) : header;
+  if (!token) return res.status(401).json({ message: "Acceso denegado" });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch (ex) {
+    res.status(401).json({ message: "Token inválido o expirado" });
+  }
+}
+
 const getClients = async (req, res) => {
   try {
-    const { id_owner, sales_id, region,clientName, page, limit} = req.body;
+    const { id_owner, sales_id, region, clientName, page, limit } = req.body;
     let filter = { id_owner };
-    if (sales_id) {
-      filter.sales_id = sales_id;
-    }
-    if (region) {
-      filter.region = region;
-    }
-    let clientList = await User.find(filter)
-      .populate("sales_id")
-      .populate("client_location");
-
+    if (sales_id) filter.sales_id = sales_id;
+    if (region) filter.region = region;
+    let clientList = await User.find(filter).populate("sales_id").populate("client_location");
     if (clientName) {
-      const clientNameLower = clientName
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase();
-
+      const q = clientName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
       clientList = clientList.filter((c) => {
-        const name = (c.name || "")
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toLowerCase();
-
-        const lastName = (c.lastName || "")
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toLowerCase();
-
-        return name.includes(clientNameLower) || lastName.includes(clientNameLower);
+        const n = (c.name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const l = (c.lastName || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        return n.includes(q) || l.includes(q);
       });
     }
-
     const start = (page - 1) * limit;
-    const paginatedClients = limit > 0 ? clientList.slice(start, start + limit) : clientList;
-
-    res.json({
-      clients: paginatedClients,
-      totalPages: limit > 0 ? Math.ceil(clientList.length / limit) : 1,
-      currentPage: page,
-      totalItems: clientList.length
-    });
+    const paginated = limit > 0 ? clientList.slice(start, start + limit) : clientList;
+    res.json({ clients: paginated, totalPages: limit > 0 ? Math.ceil(clientList.length / limit) : 1, currentPage: page, totalItems: clientList.length });
   } catch (error) {
-    res.status(500).json({ message: "Error al obtener clientes", error });
+    res.status(500).json({ message: "Error al obtener clientes" });
   }
 };
+
 const getClientsArchived = async (req, res) => {
-  const clientList = await User.find({id_owner:String(req.body.id_owner),status:"ARCHIVED"}).populate("chat");
-  res.json(clientList);
+  try {
+    const clientList = await User.find({ id_owner: String(req.body.id_owner), status: "ARCHIVED" }).populate("chat");
+    res.json(clientList);
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener archivados" });
+  }
 };
+
 const getClientInfoById = async (req, res) => {
-  const clientList = await User.find({id_user:String(req.body.id_user)});
-  res.json(clientList);
+  try {
+    const clientList = await User.find({ id_user: String(req.body.id_user) });
+    res.json(clientList);
+  } catch (error) {
+    res.status(500).json({ message: "Error en la búsqueda" });
+  }
 };
+
 const getClientInfoByIdAndSales = async (req, res) => {
   try {
-    const { id_user, salesId, page, limit, search} = req.body;
-
+    const { id_user, salesId, page, limit, search } = req.body;
     const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    const query = {
-      id_owner: String(id_user),
-      sales_id: mongoose.Types.ObjectId(salesId),
-    };
-
-    if (search.trim() !== "") {
-      const regex = new RegExp(search.trim(), "i");
-      query.$or = [{ name: regex }, { lastName: regex }];
+    const query = { id_owner: String(id_user), sales_id: new mongoose.Types.ObjectId(salesId) };
+    const s = String(search || "").trim();
+    if (s) {
+      const safe = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      query.$expr = { $regexMatch: { input: { $concat: ["$name", " ", "$lastName"] }, regex: new RegExp(safe, "i") } };
     }
-
     const [clientList, totalClients] = await Promise.all([
-      User.find(query)
-        .populate("client_location")
-        .skip(skip)
-        .limit(parseInt(limit)),
+      User.find(query).populate("client_location").skip(skip).limit(parseInt(limit)),
       User.countDocuments(query),
     ]);
-
-    const totalPages = Math.ceil(totalClients / limit);
-
-    res.json({
-      data: clientList,
-      totalPages,
-      currentPage: parseInt(page),
-      totalClients,
-    });
+    res.json({ data: clientList, totalPages: Math.ceil(totalClients / parseInt(limit)), currentPage: parseInt(page), totalClients });
   } catch (error) {
-    console.error("Error fetching clients:", error);
-    res.status(500).json({ error: "Error fetching clients" });
+    res.status(500).json({ message: "Error al buscar clientes" });
+  }
+};
+
+const postClient = async (req, res) => {
+  try {
+    const client = new User({
+      name: req.body.name, lastName: req.body.lastName,
+      profilePicture: req.body.profilePicture, icon: req.body.icon,
+      directionId: "", number: req.body.number,
+      identityNumber: req.body.identityNumber, company: req.body.company,
+      email: req.body.email, socialNetwork: req.body.socialNetwork,
+      notes: req.body.notes, id_user: req.body.id_user,
+      id_owner: req.body.id_owner, status: "SHOW", chat: req.body.chat,
+      userCategory: req.body.userCategory,
+      client_location: new mongoose.Types.ObjectId(req.body.directionId),
+      sales_id: new mongoose.Types.ObjectId(req.body.sales_id),
+      region: req.body.region, identificationImage: req.body.identificationImage,
+    });
+    await client.save();
+    res.status(201).json({ message: "Cliente registrado correctamente" });
+  } catch (e) {
+    res.status(500).json({ message: "Error al registrar cliente" });
+  }
+};
+
+const updateUserStatus = async (req, res) => {
+  try {
+    const updated = await User.findOneAndUpdate({ id_user: req.body.id_user }, { status: req.body.status }, { new: true });
+    if (!updated) return res.status(404).json({ message: "Usuario no encontrado" });
+    res.json({ message: "Estado actualizado", user: updated });
+  } catch (error) {
+    res.status(500).json({ message: "Error al actualizar estado" });
   }
 };
 
 const updateUserFile = async (req, res) => {
-  const { id_user, name, lastName, number, company, email, directionId  } = req.body;
-
   try {
-    const updatedUser = await User.findOneAndUpdate(
-      { id_user },
-      { 
-        name: name,
-        lastName: lastName,
-        number: number,
-        company: company,
-        email: email,
-        directionId: directionId        
-      },
-      { new: true }
-    );
-
-    if (!updatedUser) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    res.json({ message: 'User status updated successfully', user: updatedUser });
+    const { id_user, name, lastName, number, company, email, directionId } = req.body;
+    const updated = await User.findOneAndUpdate({ id_user }, { name, lastName, number, company, email, directionId }, { new: true });
+    if (!updated) return res.status(404).json({ message: "Usuario no encontrado" });
+    res.json({ message: "Usuario actualizado", user: updated });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update user status', error });
+    res.status(500).json({ message: "Error al actualizar" });
   }
 };
-const postClient = (req, res) => {
-  try {
-   const clients = new User({
-      name: req.body.name,
-      lastName: req.body.lastName,
-      profilePicture: req.body.profilePicture,
-      icon: req.body.icon, 
-      directionId: "",
-      number: req.body.number, 
-      identityNumber: req.body.identityNumber,
-      company: req.body.company,
-      email: req.body.email,
-      socialNetwork: req.body.socialNetwork,
-      notes: req.body.notes,
-      id_user: req.body.id_user,
-      id_owner: req.body.id_owner,
-      status: "SHOW",
-      chat: req.body.chat,
-      userCategory: req.body.userCategory,
-      client_location: mongoose.Types.ObjectId(req.body.directionId),
-      sales_id: mongoose.Types.ObjectId(req.body.sales_id),
-      region: req.body.region,
-      identificationImage: req.body.identificationImage
 
-    });
-    clients.save((err, user) => {
-      if (err) {
-        res.status(500).send({ message: err });
-        return;
-      }
-      res.send({ message: "User was registered successfully!" });
-    });
-  } catch (e) {
-  }
-};
-const updateUserStatus = async (req, res) => {
-  const { id_user, status } = req.body;
-
-  try {
-    const updatedUser = await User.findOneAndUpdate(
-      { id_user },
-      { status: status },
-      { new: true }
-    );
-
-    if (!updatedUser) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    res.json({ message: 'User status updated successfully', user: updatedUser });
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to update user status', error });
-  }
-};
 const getMessagesById = async (req, res) => {
-  const clientList = await Message.find({id_message:String(req.body.id_message)});
-  res.json(clientList);
-};
-const deleteClient = async (req, res) => {
-  const userId = req.body.id_user;
-  const deleteProduct = await User.deleteOne({ id_user: userId });
-
-  if (deleteProduct.deletedCount === 0) {
-    return res.status(404).json({ error: 'Cliente no encontrado' });
+  try {
+    const msgs = await Message.find({ id_message: String(req.body.id_message) });
+    res.json(msgs);
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener mensajes" });
   }
-  return res.status(200).json({ message: 'Cliente eliminado correctamente' });
 };
+
+const deleteClient = async (req, res) => {
+  try {
+    const result = await User.deleteOne({ id_user: req.body.id_user });
+    if (result.deletedCount === 0) return res.status(404).json({ message: "Cliente no encontrado" });
+    res.json({ message: "Cliente eliminado correctamente" });
+  } catch (error) {
+    res.status(500).json({ message: "Error al eliminar" });
+  }
+};
+
 const updateClient = async (req, res) => {
-  console.log(req.body)
   try {
     const { _id, name, lastName, sales_id, id_owner } = req.body;
-    console.log(req.body)
-    if (!_id) {
-      return res.status(400).json({ message: "El campo _id es obligatorio" });
-    }
-
-    const updatedClient = await User.findByIdAndUpdate(
+    if (!_id) return res.status(400).json({ message: "El campo _id es obligatorio" });
+    const updated = await User.findByIdAndUpdate(
       { _id, id_owner },
-      {
-        $set: {
-          name,
-          lastName,
-          sales_id: new mongoose.Types.ObjectId(sales_id),
-        },
-      },
+      { $set: { name, lastName, sales_id: new mongoose.Types.ObjectId(sales_id) } },
       { new: true }
     );
-
-    if (!updatedClient) {
-      return res.status(404).json({ message: "Cliente no encontrado" });
-    }
-
-    res.status(200).json({
-      message: "Cliente actualizado correctamente",
-      client: updatedClient,
-    });
+    if (!updated) return res.status(404).json({ message: "Cliente no encontrado" });
+    res.status(200).json({ message: "Cliente actualizado", client: updated });
   } catch (error) {
-    console.error("Error actualizando cliente:", error);
-    res.status(500).json({ message: "Error al actualizar cliente", error });
+    res.status(500).json({ message: "Error al actualizar cliente" });
   }
 };
+
 module.exports = {
-  postNewAccountUser,updateClient,loginUser,resetPassword, getClientsList,auth,getUser, getClientInfoByIdAndSales,loginUser,getClients, getClientsArchived,getMessagesById, getClientInfoById, postClient, updateUserFile,updateUserStatus, deleteClient
+  postNewAccountUser, updateClient, loginUser, resetPassword,
+  getClientsList, auth, getUser, getClientInfoByIdAndSales,
+  getClients, getClientsArchived, getMessagesById,
+  getClientInfoById, postClient, updateUserFile,
+  updateUserStatus, deleteClient,
 };

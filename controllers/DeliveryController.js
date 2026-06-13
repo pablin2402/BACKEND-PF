@@ -45,7 +45,6 @@ const getDeliveryOrderPickUpByOrderId = async (req, res) => {
   try {
     
     const { orderId, id_owner } = req.body;
-    console.log(req.body)
     if (!orderId || !id_owner) {
       return res.status(400).json({ message: "Faltan campos requeridos: orderId o id_owner" });
     }
@@ -199,7 +198,7 @@ const getDeliveryById = async (req, res) => {
       id_owner: String(req.body.id_owner)
     })
     .populate("client_location")
-
+    
     if (!salesMan) {
       return res.status(404).json({ message: "Vendedor no encontrado" });
     }

@@ -78,28 +78,18 @@ const getSalesManByIdRoute = async (req, res) => {
       id_owner: String(req.body.id_owner),
       salesMan: new mongoose.Types.ObjectId(req.body.salesMan),
     };
-
-    if (req.body.startDate) {
-      const startDateUTC = new Date(req.body.startDate);
-      const year = startDateUTC.getUTCFullYear();
-      const month = startDateUTC.getUTCMonth();
-      const day = startDateUTC.getUTCDate();
+    if (req.body.status && req.body.status !== "todos") {
+      query.status = req.body.status;
+    }
   
-      const startOfDay = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));   
-      startOfDay.setHours(startOfDay.getHours());
-      const endOfDay = new Date(Date.UTC(year, month, day, 23, 59, 59, 999)); 
-      endOfDay.setHours(endOfDay.getHours());  
-      query.startDate = { $gte: startOfDay, $lte: endOfDay };
-  }
-    const salesManData = await SalesManRoute.find(query)
-      .populate("salesMan")
-
+    const salesManData = await SalesManRoute.find(query).populate("salesMan");
+  
     res.json(salesManData || []);
-
   } catch (error) {
     console.error("Error en la búsqueda:", error);
     res.status(500).json({ message: "Error en la búsqueda", error });
   }
+  
 };
 const getRouteSalesById = async (req, res) => {
   try {
@@ -268,7 +258,7 @@ const getAllRoutes = async (req, res) => {
     if (req.body.salesMan && req.body.salesMan !== "todos") {
       query.salesMan = new mongoose.Types.ObjectId(req.body.salesMan);
     }
-
+    
     if (req.body.status && req.body.status !== "") {
       query.status = req.body.status;
     }

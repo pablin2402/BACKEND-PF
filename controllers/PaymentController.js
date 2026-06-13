@@ -63,7 +63,6 @@ const { ethers } = require("ethers");
           },
           timeout: 15000,
         });
-        console.log(data)
         if (!data || !Array.isArray(data.result) || data.result.length === 0) {
           return res.json(payment);
         }

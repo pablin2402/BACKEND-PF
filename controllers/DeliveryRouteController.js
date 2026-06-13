@@ -48,59 +48,45 @@ const postNewRoute = (req, res) => {
       id_owner: req.body.id_owner,
       progress: req.body.progress,
       startDateRouteSales: null,
+
+      stackingPlan: req.body.stackingPlan || null,
+      capacity: req.body.capacity,
+      totalBoxes: req.body.totalBoxes,
+      fullBoxes: req.body.fullBoxes,
+      halfBoxes: req.body.halfBoxes,
+      looseBottles: req.body.looseBottles,
+      totalBottles: req.body.totalBottles,
+      utilization: req.body.utilization,
+      oversized: req.body.oversized,
+      optimizationMethod: req.body.optimizationMethod,
+      groupId: req.body.groupId,
+      tripNumber: req.body.tripNumber,
+      totalTrips: req.body.totalTrips,
+      estimatedDistance: req.body.estimatedDistance,
+      estimatedTime: req.body.estimatedTime,
+      depotCoords: req.body.depotCoords,
+      truckCapacityUsed: req.body.truckCapacityUsed,
+      totalAmount: req.body.totalAmount,
+      clientsZones: req.body.clientsZones,
+      operationalNotes: req.body.operationalNotes,
+      routeMetrics: req.body.routeMetrics,
     });
-    client.save((err, client) => {
+
+    client.save((err, saved) => {
       if (err) {
         res.status(500).send({ message: err });
         return;
       }
-      res.status(200, 204).send({
-        salesMan: client.salesMan,
-        details: client.details,
-        route: client.route,
-        status: client.status,
-        startDate: client.startDate,
-        endDate: client.endDate,
-        id_owner: client.id_owner,
-        progress: client.progress,
-        startDateRouteSales: client.startDateRouteSales,
-      });
+      res.status(200).send(saved);
     });
   } catch (e) {
+    res.status(500).send({ message: e.message });
   }
 };
 const getSalesMan = async (req, res) => {
   await SalesMan.find({ id_owner: String(req.body.id_owner) }).then(p => res.json(p));
 };
-const getDeliveryByIdRoute = async (req, res) => {
-  try {
-    const query = {
-      id_owner: String(req.body.id_owner),
-      _id: new mongoose.Types.ObjectId(req.body._id),
-    };
 
-    if (req.body.startDate) {
-      const startDateUTC = new Date(req.body.startDate);
-      const year = startDateUTC.getUTCFullYear();
-      const month = startDateUTC.getUTCMonth();
-      const day = startDateUTC.getUTCDate();
-
-      const startOfDay = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
-      startOfDay.setHours(startOfDay.getHours());
-      const endOfDay = new Date(Date.UTC(year, month, day, 23, 59, 59, 999));
-      endOfDay.setHours(endOfDay.getHours());
-      query.startDate = { $gte: startOfDay, $lte: endOfDay };
-    }
-    const salesManData = await SalesManRoute.find(query)
-      .populate("delivery")
-
-    res.json(salesManData || []);
-
-  } catch (error) {
-    console.error("Error en la búsqueda:", error);
-    res.status(500).json({ message: "Error en la búsqueda", error });
-  }
-};
 const getSalesManByIdRoute = async (req, res) => {
   try {
     const query = {
@@ -133,12 +119,11 @@ const getSalesManByIdRoute = async (req, res) => {
 const getSalesManByIdRouteDelivery = async (req, res) => {
   try {
     const { id_owner, delivery } = req.body;
-
     if (!id_owner || !delivery) {
       return res.status(400).json({ message: "Falta id_owner o delivery" });
     }
 
-    const now = new Date(); // Fecha actual del servidor
+    const now = new Date(); 
 
     const startOfDay = new Date(Date.UTC(
       now.getUTCFullYear(),
@@ -146,20 +131,18 @@ const getSalesManByIdRouteDelivery = async (req, res) => {
       now.getUTCDate(),
       0, 0, 0, 0
     ));
-
     const endOfDay = new Date(Date.UTC(
       now.getUTCFullYear(),
       now.getUTCMonth(),
       now.getUTCDate(),
       23, 59, 59, 999
     ));
-
     const query = {
       id_owner: String(id_owner),
       delivery: new mongoose.Types.ObjectId(delivery),
       startDate: { $gte: startOfDay, $lte: endOfDay },
     };
-
+    
     const salesManData = await SalesManRoute.find(query).populate("delivery");
 
     res.json(salesManData || []);
@@ -292,7 +275,6 @@ const getSalesManByIdAndDayActivity = async (req, res) => {
 };
 const getAllRoutes = async (req, res) => {
   try {
-    console.log(req.body)
     const query = { id_owner: String(req.body.id_owner) };
     if (req.body.delivery && req.body.delivery !== "todos") {
       query.delivery = new mongoose.Types.ObjectId(req.body.delivery);

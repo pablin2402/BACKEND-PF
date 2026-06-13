@@ -2,7 +2,15 @@ const Order = require("../models/Order");
 const mongoose = require("mongoose");
 const axios = require("axios");
 
-
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:5007";
+const ML_TIMEOUT_MS = 30000;
+const HISTORY_YEARS = 5;
+const TOP_PRODUCTS_LIMIT = 10;
+const FORECAST_HORIZON = 3;
+const GROWTH_YOY = 0.10;
+const MIN_MONTHS_REQUIRED = 6;
+const MIN_NON_ZERO_MONTHS = 4;
+ 
 const getCategorySummary = async (req, res) => {
   try {
     const { startDate, endDate, id_owner, salesId, payStatus, region } = req.body;
@@ -148,16 +156,49 @@ function generateMonthlySalesData(orders, productName) {
 
   return allMonths.map((m) => grouped[m] || 0);
 }
+const slugifyModelId = (s) =>
+  String(s)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80);
 
+const buildMonthRange = (startDate, endDate) => {
+  const months = [];
+  const current = new Date(
+    Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), 1)
+  );
+  const end = new Date(
+    Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), 1)
+  );
+  while (current <= end) {
+    const year = current.getUTCFullYear();
+    const month = String(current.getUTCMonth() + 1).padStart(2, "0");
+    months.push(`${year}-${month}`);
+    current.setUTCMonth(current.getUTCMonth() + 1);
+  }
+  return months;
+};
+ 
 const predictSalesForTopProducts = async (req, res) => {
   try {
     const now = new Date();
-    const startDate = new Date(now.getUTCFullYear() - 10, 0, 1);
-    const endDate = new Date(now.getUTCFullYear() + 1, 0, 1);
-
-    const topProductsAgg = [
+    const startDate = new Date(
+      Date.UTC(now.getUTCFullYear() - HISTORY_YEARS, 0, 1)
+    );
+    const endDate = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
+    );
+ 
+    const topProducts = await Order.aggregate([
       { $match: { creationDate: { $gte: startDate, $lt: endDate } } },
       { $unwind: "$products" },
+      {
+        $match: {
+          "products.nombre": { $exists: true, $ne: null, $ne: "" },
+          "products.cantidad": { $gt: 0 },
+        },
+      },
       {
         $group: {
           _id: "$products.nombre",
@@ -165,60 +206,104 @@ const predictSalesForTopProducts = async (req, res) => {
         },
       },
       { $sort: { totalCantidad: -1 } },
-      { $limit: 10 },
-    ];
-
-    const topProducts = await Order.aggregate(topProductsAgg);
-    const orders = await Order.find({
-      creationDate: { $gte: startDate, $lt: endDate },
-    });
-
-    const predictions = await Promise.all(
-      topProducts.map(async (product) => {
-        const series = generateMonthlySalesData(orders, product._id);
-
-        console.log(`\nProducto: ${product._id}`);
-        console.log("Serie enviada:", series);
-        console.log("Largo de la serie:", series.length);
-        console.log("Tipo de cada valor:", [...new Set(series.map((v) => typeof v))]);
-        console.log("Valores no cero:", series.filter(v => v > 0).length);
-        console.log("Serie válida:", Array.isArray(series) && series.every(v => typeof v === 'number'));
-        console.log("---------------------------------------------------");
-
-        try {
-          const response = await axios.post("http://192.168.0.105:5003/predict", {
+      { $limit: TOP_PRODUCTS_LIMIT },
+    ]);
+ 
+    if (!topProducts.length) {
+      return res.json({ data: [] });
+    }
+ 
+    const topProductNames = topProducts.map((p) => p._id);
+ 
+    const monthlyAgg = await Order.aggregate([
+      { $match: { creationDate: { $gte: startDate, $lt: endDate } } },
+      { $unwind: "$products" },
+      { $match: { "products.nombre": { $in: topProductNames } } },
+      {
+        $group: {
+          _id: {
+            nombre: "$products.nombre",
+            year: { $year: "$creationDate" },
+            month: { $month: "$creationDate" },
+          },
+          cantidad: { $sum: "$products.cantidad" },
+        },
+      },
+    ]);
+ 
+    const seriesByProduct = new Map();
+    for (const name of topProductNames) {
+      seriesByProduct.set(name, new Map());
+    }
+    for (const row of monthlyAgg) {
+      const { nombre, year, month } = row._id;
+      const key = `${year}-${String(month).padStart(2, "0")}`;
+      seriesByProduct.get(nombre)?.set(key, row.cantidad);
+    }
+ 
+    const allMonths = buildMonthRange(startDate, new Date(endDate.getTime() - 1));
+ 
+    const predictionPromises = topProducts.map(async (product) => {
+      const monthlyMap = seriesByProduct.get(product._id) || new Map();
+      const series = allMonths.map((m) => monthlyMap.get(m) || 0);
+      const nonZeroCount = series.filter((v) => v > 0).length;
+ 
+      if (series.length < MIN_MONTHS_REQUIRED || nonZeroCount < MIN_NON_ZERO_MONTHS) {
+        return {
+          nombre: product._id,
+          totalCantidad: product.totalCantidad,
+          forecast: [],
+          warning: `Datos insuficientes (meses=${series.length}, conVentas=${nonZeroCount})`,
+        };
+      }
+ 
+      try {
+        const response = await axios.post(
+          `${ML_SERVICE_URL}/predict`,
+          {
             series,
-          });
-
-          return {
-            nombre: product._id,
-            totalCantidad: product.totalCantidad,
-            forecast: response.data.map((val, i) => ({
-              mes: `+${i + 1}`,
-              valor: Math.round(val),
-            })),
-          };
-        } catch (err) {
-          console.warn(`⚠️ Error al predecir ${product._id}:`, err.message);
-          return {
-            nombre: product._id,
-            totalCantidad: product.totalCantidad,
-            forecast: [],
-            error: "Error de predicción o datos insuficientes",
-          };
-        }
-      })
-    );
-
+            horizon: FORECAST_HORIZON,
+            growth_yoy: GROWTH_YOY,
+          },
+          { timeout: ML_TIMEOUT_MS }
+        );
+ 
+        const forecastArr = response?.data?.forecast || [];
+ 
+        return {
+          nombre: product._id,
+          totalCantidad: product.totalCantidad,
+          forecast: forecastArr.map((val, i) => ({
+            mes: `+${i + 1}`,
+            valor: Math.max(0, Math.round(Number(val) || 0)),
+          })),
+        };
+      } catch (err) {
+        const errMsg =
+          err.response?.data?.error || err.message || "Error desconocido";
+        console.warn(`[predict] Error en "${product._id}":`, errMsg);
+        return {
+          nombre: product._id,
+          totalCantidad: product.totalCantidad,
+          forecast: [],
+          error: errMsg,
+        };
+      }
+    });
+ 
+    const predictions = await Promise.all(predictionPromises);
+ 
     res.json({ data: predictions });
   } catch (err) {
-    console.error("Error general al predecir:", err);
+    console.error("[predict] Error general:", err);
     res.status(500).json({ error: "Error del servidor" });
   }
 };
+
+
 const getOrderById = async (req, res) => {
   try {
-    const { id_owner, page, limit, status, paymentType, payStatus, salesId, fullName, startDate, endDate,region } = req.body;
+    const { id_owner, page, limit, status, paymentType, payStatus, salesId, fullName, startDate, endDate, region } = req.body;
     const pageNumber = parseInt(page);
     const limitNumber = parseInt(limit);
     let matchStage = { id_owner };
@@ -437,7 +522,7 @@ const getOrderById = async (req, res) => {
 };
 const getOrderStatusCounts = async (req, res) => {
   try {
-    const { id_owner,paymentType, payStatus, salesId, fullName, startDate, endDate, region } = req.body;
+    const { id_owner, paymentType, payStatus, salesId, fullName, startDate, endDate, region } = req.body;
     let matchStage = { id_owner };
     if (region) matchStage.region = region;
     if (payStatus) matchStage.payStatus = payStatus;
@@ -544,7 +629,7 @@ const getOrderStatusCounts = async (req, res) => {
       "En Ruta": 0,
       cancelled: 0,
       aproved: 0,
-      delivered: 0
+      deliver: 0
     };
 
     result.forEach(r => {
@@ -562,7 +647,7 @@ const getOrderStatusCounts = async (req, res) => {
 };
 const getOrderSalesAppById = async (req, res) => {
   try {
-    const { id_owner, page, limit, status, paymentType, payStatus, salesId, fullName, startDate, endDate,region } = req.body;
+    const { id_owner, page, limit, status, paymentType, payStatus, salesId, fullName, startDate, endDate, region } = req.body;
     const pageNumber = parseInt(page);
     const limitNumber = parseInt(limit);
     let matchStage = { id_owner };
@@ -572,7 +657,7 @@ const getOrderSalesAppById = async (req, res) => {
     if (salesId) matchStage.salesId = mongoose.Types.ObjectId(salesId);
     if (paymentType) matchStage.accountStatus = paymentType;
     const pipeline = [];
-
+    console.log(req.body);
     if (startDate && endDate) {
       pipeline.push(
         {
@@ -781,17 +866,20 @@ const getOrderSalesAppById = async (req, res) => {
 };
 const getOrderByIdAndOrderStatus = async (req, res) => {
   try {
-    const { id_owner, page, limit, status, paymentType, payStatus, salesId, fullName, startDate, endDate,region } = req.body;
+    const { id_owner, page, limit, status, paymentType, payStatus, salesId, fullName, startDate, endDate, region } = req.body;
+    console.log(req.body)
     const pageNumber = parseInt(page);
     const limitNumber = parseInt(limit);
     let matchStage = { id_owner };
     if (region) matchStage.region = region;
-    if (payStatus) matchStage.payStatus = payStatus;
+    if (payStatus && payStatus !== "Todos") {
+      matchStage.payStatus = payStatus;
+    }
     if (status) matchStage.orderStatus = status;
-    if (salesId) matchStage.salesId = mongoose.Types.ObjectId(salesId);
+   // if (salesId) matchStage.salesId = mongoose.Types.ObjectId(salesId);
     if (paymentType) matchStage.accountStatus = paymentType;
 
-    
+
     const pipeline = [];
 
     if (startDate && endDate) {
@@ -1173,30 +1261,19 @@ const getOrderByIdAndClient = async (req, res) => {
     const pipeline = [];
 
     if (startDate && endDate) {
-      pipeline.push(
-        {
-          $addFields: {
-            creationDateLocal: {
-              $dateSubtract: {
-                startDate: "$creationDate",
-                unit: "hour",
-                amount: 4,
-              },
-            },
+      pipeline.push({
+        $match: {
+          ...matchStage,
+          creationDate: {
+            $gte: new Date(`${startDate}T04:00:00.000Z`),
+            $lte: new Date(`${endDate}T03:59:59.999Z`),
           },
         },
-        {
-          $match: {
-            ...matchStage,
-            creationDateLocal: {
-              $gte: new Date(`${startDate}T00:00:00Z`),
-              $lte: new Date(`${endDate}T23:59:59Z`),
-            },
-          },
-        }
-      );
+      });
     } else {
-      pipeline.push({ $match: matchStage });
+      pipeline.push({
+        $match: matchStage,
+      });
     }
 
     pipeline.push(
@@ -1208,6 +1285,7 @@ const getOrderByIdAndClient = async (req, res) => {
           as: "pagos",
         },
       },
+
       {
         $addFields: {
           pagosOrdenados: {
@@ -1224,6 +1302,7 @@ const getOrderByIdAndClient = async (req, res) => {
           },
         },
       },
+
       {
         $addFields: {
           pagosConAcumulado: {
@@ -1275,6 +1354,7 @@ const getOrderByIdAndClient = async (req, res) => {
           },
         },
       },
+
       {
         $addFields: {
           totalPagado: "$pagosConAcumulado.acumulado",
@@ -1284,6 +1364,7 @@ const getOrderByIdAndClient = async (req, res) => {
           },
         },
       },
+
       {
         $addFields: {
           diasMora: {
@@ -1329,6 +1410,7 @@ const getOrderByIdAndClient = async (req, res) => {
               },
             ],
           },
+
           payStatus: {
             $cond: {
               if: { $gt: ["$restante", 0] },
@@ -1338,15 +1420,22 @@ const getOrderByIdAndClient = async (req, res) => {
           },
         },
       },
+
       ...(payStatus
         ? [
             {
               $match: {
-                payStatus: payStatus,
+                payStatus,
               },
             },
           ]
-        : [])
+        : []),
+
+      {
+        $sort: {
+          creationDate: -1,
+        },
+      }
     );
 
     let orders = await Order.aggregate(pipeline);
@@ -1367,32 +1456,41 @@ const getOrderByIdAndClient = async (req, res) => {
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
           .toLowerCase();
+
         const lastName = (order.id_client?.lastName || "")
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
           .toLowerCase();
+
         return (
-          name.includes(clientNameLower) || lastName.includes(clientNameLower)
+          name.includes(clientNameLower) ||
+          lastName.includes(clientNameLower)
         );
       });
     }
 
+   const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 5;
     const totalOrders = orders.length;
 
     const paginatedOrders = orders.slice(
-      (parseInt(page) - 1) * parseInt(limit),
-      parseInt(page) * parseInt(limit)
+      (pageNum - 1) * limitNum,
+      pageNum * limitNum
     );
 
-    res.json({
+    return res.json({
       orders: paginatedOrders,
-      totalPages: Math.ceil(totalOrders / limit),
-      currentPage: parseInt(page),
-      items: totalOrders
+      totalPages: Math.ceil(totalOrders / limitNum),
+      currentPage: pageNum,
+      items: totalOrders,
     });
   } catch (error) {
     console.error("Error al obtener órdenes con pagos:", error);
-    res.status(500).json({ message: "Error al obtener las órdenes", error });
+
+    return res.status(500).json({
+      message: "Error al obtener las órdenes",
+      error,
+    });
   }
 };
 const getOrderByIdAndDelivery = async (req, res) => {
@@ -1750,6 +1848,7 @@ const updateOrderTracking = async (req, res) => {
 };
 const uploadOrderStatus = async (req, res) => {
   try {
+    console.log(req.body)
     const { _id, id_owner, orderStatus } = req.body;
     if (!_id || !id_owner || !orderStatus) {
       return res.status(400).send({ message: "Faltan datos: _id, id_owner y orderStatus son requeridos." });
@@ -1773,7 +1872,7 @@ const uploadOrderStatus = async (req, res) => {
 };
 const getApprovedOrdersCount = async (req, res) => {
   try {
-    const { id_owner,status } = req.body; 
+    const { id_owner, status } = req.body;
 
     const filter = { orderStatus: status };
 
@@ -1977,12 +2076,12 @@ const getOrderByIdAndDeliver = async (req, res) => {
       },
       ...(payStatus
         ? [
-            {
-              $match: {
-                payStatus: payStatus,
-              },
+          {
+            $match: {
+              payStatus: payStatus,
             },
-          ]
+          },
+        ]
         : [])
     );
 

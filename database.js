@@ -1,8 +1,7 @@
 const mongoose = require("mongoose");
 const { MongoStore } = require('wwebjs-mongo');
 
-const URI =
-  "mongodb+srv://pablo:PpR2402174064@cluster0.q40rfxx.mongodb.net/API?retryWrites=true&w=majority";
+const URI ="mongodb+srv://pablo:PpR2402174064@cluster0.q40rfxx.mongodb.net/API?retryWrites=true&w=majority";
 mongoose.set("strictQuery", false);
 
 let store; 

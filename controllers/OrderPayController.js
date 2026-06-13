@@ -115,9 +115,13 @@ const getOrderPayBySales = async (req, res) => {
     const limit = parseInt(req.body.limit) || 0;
     let filter = { id_owner: String(req.body.id_owner) };
     if (req.body.startDate && req.body.endDate) {
+      const startUTC = new Date(`${req.body.startDate}T00:00:00.000Z`);
+      startUTC.setHours(startUTC.getHours() + 4);
+      const endUTC = new Date(`${req.body.endDate}T23:59:59.999Z`);
+      endUTC.setHours(endUTC.getHours() + 4);
       filter.creationDate = {
-        $gte: new Date(`${req.body.startDate}T00:00:00Z`),
-        $lte: new Date(`${req.body.endDate}T23:59:59Z`),
+        $gte: startUTC,
+        $lte: endUTC,
       };
     }
 
@@ -225,19 +229,43 @@ const getOrderPayId = async (req, res) => {
 };
 const postOrderPay = async (req, res) => {
   try {
+    const {
+      saleImage,
+      total,
+      note,
+      orderId,
+      numberOrden,
+      paymentStatus,
+      id_client,
+      sales_id,
+      delivery_id,
+      id_owner,
+      reviewer,
+      paymentType,
+      network,
+      txHash,
+      blockNumber,
+      contractAddress,
+    } = req.body;
 
     const newOrderPay = new OrderPay({
-      saleImage: req.body.saleImage,
-      total: Number(req.body.total),
-      note: req.body.note,
-      orderId: mongoose.Types.ObjectId(req.body.orderId),
-      numberOrden: req.body.numberOrden,
-      paymentStatus: req.body.paymentStatus,
-      id_client: mongoose.Types.ObjectId(req.body.id_client),
-      sales_id: req.body.sales_id ? mongoose.Types.ObjectId(req.body.sales_id) : null,
-      delivery_id: req.body.delivery_id ? mongoose.Types.ObjectId(req.body.delivery_id) : null,      
-      id_owner: req.body.id_owner,
-      reviewer: req.body.reviewer
+      saleImage,
+      total: Number(total),
+      note,
+      orderId: new mongoose.Types.ObjectId(orderId),
+      numberOrden,
+      paymentStatus,
+      id_client: new mongoose.Types.ObjectId(id_client),
+      sales_id: sales_id ? new mongoose.Types.ObjectId(sales_id) : null,
+      delivery_id: delivery_id ? new mongoose.Types.ObjectId(delivery_id) : null,
+      id_owner,
+      reviewer,
+      paymentType: paymentType || "cash",
+      network: network || null,
+      txHash: txHash || null,
+      blockNumber: blockNumber ? Number(blockNumber) : null,
+      contractAddress: contractAddress || null,
+      blockchainRegisteredAt: txHash ? new Date() : null,
     });
 
     const savedOrderPay = await newOrderPay.save();
@@ -246,7 +274,6 @@ const postOrderPay = async (req, res) => {
     const totalPagado = allPays.reduce((acc, pago) => acc + pago.total, 0);
 
     const order = await Order.findById(savedOrderPay.orderId);
-
     if (!order) {
       return res.status(404).send({ message: "Orden no encontrada" });
     }
@@ -266,12 +293,19 @@ const postOrderPay = async (req, res) => {
       paymentStatus: savedOrderPay.paymentStatus,
       id_client: savedOrderPay.id_client,
       sales_id: savedOrderPay.sales_id,
+      delivery_id: savedOrderPay.delivery_id,
       id_owner: savedOrderPay.id_owner,
-      reviewer: req.body.reviewer
+      reviewer: savedOrderPay.reviewer,
+      paymentType: savedOrderPay.paymentType,
+      network: savedOrderPay.network,
+      txHash: savedOrderPay.txHash,
+      blockNumber: savedOrderPay.blockNumber,
+      contractAddress: savedOrderPay.contractAddress,
+      blockchainRegisteredAt: savedOrderPay.blockchainRegisteredAt,
     });
   } catch (e) {
     console.error("Error en postOrderPay:", e);
-    res.status(500).send({ message: "Error al guardar la orden de pago" });
+    res.status(500).send({ message: "Error al guardar la orden de pago", error: e.message });
   }
 };
 const getOrderPayByCalendar = async (req, res) => {

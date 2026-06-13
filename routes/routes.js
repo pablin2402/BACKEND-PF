@@ -18,12 +18,111 @@ const salesObjectiveRegionController = require("../controllers/SalesObjectiveReg
 const administratorController = require("../controllers/AdministratorsController.js");
 const currentLocationController = require("../controllers/CurrentLocationController.js");
 const paymentController = require("../controllers/PaymentController.js");
-
+const axios = require("axios")
 router
 .post("/login", userController.getUser)
 .post("/administrator",authenticateToken,administratorController.postNewAccount)
 .post("/administrator/list",administratorController.getClientsList)
+.get("/check-payment/:orderId", authenticateToken, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ error: 'Orden no encontrada' });
 
+    const provider = new ethers.JsonRpcProvider(process.env.POLYGON_RPC_URL);
+    
+    if (order.txHash) {
+      const receipt = await provider.getTransactionReceipt(order.txHash);
+      if (receipt) {
+        const currentBlock = await provider.getBlockNumber();
+        const confirmations = currentBlock - receipt.blockNumber;
+        
+        if (confirmations >= 12) {
+          return res.json({ status: 'confirmed', confirmations, txHash: order.txHash });
+        } else if (confirmations > 0) {
+          return res.json({ status: 'confirming', confirmations, txHash: order.txHash });
+        } else {
+          return res.json({ status: 'detected', txHash: order.txHash });
+        }
+      }
+    }
+    return res.json({ status: 'waiting' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+})
+.post("/exchange-rate", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const axios = require("axios");
+
+    const bybitFetch = async (side) => {
+      const r = await axios.post("https://api2.bybit.com/fiat/otc/item/online", {
+        tokenId: "USDT", currencyId: "BOB", payment: [], side: String(side), size: "10", page: "1"
+      });
+      return (r.data?.result?.items || []).slice(2).map(i => parseFloat(i.price)).filter(p => p > 0);
+    };
+
+    const binanceFetch = async (tradeType) => {
+      const r = await axios.post("https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search", {
+        fiat: "BOB", page: 1, rows: 10, tradeType, asset: "USDT", countries: [], payTypes: []
+      });
+      return (r.data?.data || []).slice(2).map(i => parseFloat(i.adv.price)).filter(p => p > 0);
+    };
+
+    const avg = (arr) => arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 100) / 100 : null;
+
+    const getGasFees = async () => {
+      const rpcs = {
+        polygon: "https://polygon-bor-rpc.publicnode.com",
+        ethereum: "https://ethereum-rpc.publicnode.com",
+        bsc: "https://bsc-rpc.publicnode.com",
+      };
+      const gasUsed = 65000;
+
+      const [polygonGas, ethGas, bscGas, prices] = await Promise.all([
+        axios.post(rpcs.polygon, { jsonrpc: "2.0", method: "eth_gasPrice", params: [], id: 1 }).catch(() => null),
+        axios.post(rpcs.ethereum, { jsonrpc: "2.0", method: "eth_gasPrice", params: [], id: 1 }).catch(() => null),
+        axios.post(rpcs.bsc, { jsonrpc: "2.0", method: "eth_gasPrice", params: [], id: 1 }).catch(() => null),
+        axios.get("https://api.coingecko.com/api/v3/simple/price?ids=matic-network,ethereum,binancecoin&vs_currencies=usd").catch(() => null),
+      ]);
+
+      const toUSD = (gasHex, decimals, priceUSD) => {
+        if (!gasHex || !priceUSD) return null;
+        const gweiPrice = parseInt(gasHex, 16) / 1e9;
+        const feeNative = (gweiPrice * gasUsed) / 1e9;
+        return Math.round(feeNative * priceUSD * 10000) / 10000;
+      };
+
+      const p = prices?.data || {};
+      return {
+        polygon: toUSD(polygonGas?.data?.result, 18, p["matic-network"]?.usd),
+        ethereum: toUSD(ethGas?.data?.result, 18, p["ethereum"]?.usd),
+        bsc: toUSD(bscGas?.data?.result, 18, p["binancecoin"]?.usd),
+      };
+    };
+
+    const [bybitBuy, bybitSell, binanceBuy, binanceSell, fees] = await Promise.all([
+      bybitFetch("1").catch(() => []),
+      bybitFetch("0").catch(() => []),
+      binanceFetch("BUY").catch(() => []),
+      binanceFetch("SELL").catch(() => []),
+      getGasFees(),
+    ]);
+
+    res.json({
+      bybit: { buy: avg(bybitBuy), sell: avg(bybitSell) },
+      binance: { buy: avg(binanceBuy), sell: avg(binanceSell) },
+      recommended: avg(bybitSell) || avg(binanceSell) || 9.5,
+      fees,
+    });
+  } catch (e) {
+    console.error("Error TC:", e.message);
+    res.json({ bybit: null, binance: null, recommended: 9.5, fees: null });
+  }
+})
 .post("/location/list",authenticateToken,currentLocationController.postCurrentLocation)
 .post("/location/list/id",authenticateToken, currentLocationController.getLastLocation)
 .post("/location/list/day/id",authenticateToken, currentLocationController.getLocationsByDayGrouped)
